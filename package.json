@@ -1,0 +1,36 @@
+{
+  "name": "rental-mgt-system",
+  "version": "1.0.0",
+  "description": "A native desktop app for rental management",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "concurrently -k \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:frontend": "npm run dev --prefix src",
+    "dev:electron": "wait-on http://localhost:5173 && electron . --no-sandbox",
+    "dev:server": "node server/index.js",
+    "web": "concurrently -k \"npm run dev:frontend\" \"npm run dev:server\"",
+    "build": "npm run build --prefix src && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ka-few/rental-mgt-system.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Ka-few/rental-mgt-system/issues"
+  },
+  "homepage": "https://github.com/Ka-few/rental-mgt-system#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.4.0",
+    "electron-rebuild": "^3.2.9",
+    "wait-on": "^9.0.3"
+  }
+}
