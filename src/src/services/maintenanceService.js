@@ -14,3 +14,8 @@ export const updateRequest = async (id, data) => {
     const response = await api.put(`/maintenance/${id}`, data);
     return response.data;
 };
+
+export const deleteRequest = async (id) => {
+    const response = await api.delete(`/maintenance/${id}`);
+    return response.data;
+};

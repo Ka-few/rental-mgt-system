@@ -51,4 +51,16 @@ router.put('/:id', (req, res) => {
     }
 });
 
+// Delete Request
+router.delete('/:id', (req, res) => {
+    try {
+        const stmt = db.prepare('DELETE FROM maintenance_requests WHERE id = ?');
+        const info = stmt.run(req.params.id);
+        if (info.changes === 0) return res.status(404).json({ error: 'Request not found' });
+        res.json({ message: 'Request deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
