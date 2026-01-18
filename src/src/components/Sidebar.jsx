@@ -7,6 +7,7 @@ const navigation = [
     { name: 'Finance', href: '/finance' },
     { name: 'Maintenance', href: '/maintenance' },
     { name: 'Reports', href: '/reports' },
+    { name: 'Settings', href: '/settings' },
 ];
 
 export default function Sidebar() {

@@ -20,6 +20,11 @@ export const addCharge = async (data) => {
     return response.data;
 };
 
+export const runMonthlyRent = async () => {
+    const response = await api.post('/finance/rent-run');
+    return response.data;
+};
+
 export const updateTransaction = async (id, data) => {
     const response = await api.put(`/finance/transactions/${id}`, data);
     return response.data;

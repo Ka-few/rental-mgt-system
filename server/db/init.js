@@ -1,6 +1,8 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
+const bcrypt = require('bcryptjs');
+
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../rental.db');
 const db = new Database(dbPath, { verbose: console.log });
 
@@ -71,20 +73,48 @@ const schema = `
     completed_date DATETIME,
     FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT UNIQUE NOT NULL,
+    value TEXT
+  );
 `;
 
+function seedSettings() {
+  const defaultSettings = [
+    { key: 'company_name', value: 'Rental Management System' },
+    { key: 'company_address', value: '123 Main St, City' },
+    { key: 'company_phone', value: '0700 000 000' }
+  ];
+
+  const stmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  defaultSettings.forEach(s => stmt.run(s.key, s.value));
+}
+
+function seedAdminUser() {
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
+  if (!user) {
+    console.log('Seeding default admin user...');
+    const hash = bcrypt.hashSync('admin123', 10);
+    db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run('admin', hash, 'admin');
+    console.log('Default admin user created: admin / admin123');
+  }
+}
+
 function initDb() {
-    console.log('Initializing Database...');
-    try {
-        db.exec(schema);
-        console.log('Database Schema Applied Successfully.');
-    } catch (err) {
-        console.error('Error initializing database:', err);
-    }
+  console.log('Initializing Database...');
+  try {
+    db.exec(schema);
+    seedAdminUser();
+    console.log('Database Schema Applied Successfully.');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
 }
 
 if (require.main === module) {
-    initDb();
+  initDb();
 }
 
 module.exports = { initDb, db };

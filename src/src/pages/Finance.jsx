@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction } from '../services/financeService';
+import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent } from '../services/financeService';
 import { getTenants } from '../services/tenantService';
+import { useToast } from '../context/ToastContext';
 
 export default function Finance() {
+    const toast = useToast();
     const [balances, setBalances] = useState([]);
     const [tenants, setTenants] = useState([]);
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -24,10 +26,15 @@ export default function Finance() {
         date: new Date().toISOString().split('T')[0]
     });
     const [chargeForm, setChargeForm] = useState({ tenant_id: '', type: 'Rent Charge', amount: '', description: '' });
+    const [companySettings, setCompanySettings] = useState({});
 
     useEffect(() => {
         loadData();
         getTenants().then(setTenants).catch(console.error);
+        fetch('http://localhost:3000/api/settings')
+            .then(res => res.json())
+            .then(data => setCompanySettings(data))
+            .catch(err => console.error('Error fetching settings:', err));
     }, []);
 
     const loadData = () => {
@@ -48,8 +55,9 @@ export default function Finance() {
                 reference_code: '',
                 date: new Date().toISOString().split('T')[0]
             });
+            toast.success('Payment recorded successfully!');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message || 'Failed to record payment');
         }
     };
 
@@ -60,8 +68,9 @@ export default function Finance() {
             setIsChargeModalOpen(false);
             loadData();
             setChargeForm({ tenant_id: '', type: 'Rent Charge', amount: '', description: '' });
+            toast.success('Charge added successfully!');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message || 'Failed to add charge');
         }
     };
 
@@ -75,8 +84,70 @@ export default function Finance() {
             setEditingTransaction(null);
         } catch (err) {
             console.error(err);
-            alert('Error loading history');
+            toast.error('Error loading transaction history');
         }
+    };
+
+    const handleRentRun = async () => {
+        if (!window.confirm('Are you sure you want to generate rent charges for ALL active tenants?')) return;
+
+        try {
+            const res = await runMonthlyRent();
+            toast.success(res.message || 'Monthly rent generated successfully!');
+            loadData();
+        } catch (err) {
+            toast.error(err.message || 'Failed to generate rent');
+        }
+    };
+
+    const handlePrintReceipt = (transaction) => {
+        const printWindow = window.open('', '', 'width=600,height=600');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Payment Receipt</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; padding: 20px; }
+                    .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 20px; }
+                    .details { margin-bottom: 20px; }
+                    .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+                    .total { border-top: 2px dashed #000; padding-top: 10px; font-weight: bold; font-size: 1.2em; }
+                    .footer { text-align: center; margin-top: 40px; font-size: 0.8em; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>${companySettings.company_name || 'PAYMENT RECEIPT'}</h2>
+                    <p>${companySettings.company_address || 'Rental Management System'}</p>
+                    <p>${companySettings.company_phone || ''}</p>
+                </div>
+                <div class="details">
+                    <div class="row"><span>Date:</span> <span>${new Date(transaction.date).toLocaleDateString()}</span></div>
+                    <div class="row"><span>Receipt No:</span> <span>${transaction.id}</span></div>
+                    <div class="row"><span>Tenant:</span> <span>${selectedTenantName}</span></div>
+                    <div class="row"><span>Property:</span> <span>${balances.find(b => b.tenant_id === selectedTenantId)?.property_name || 'N/A'}</span></div>
+                    <div class="row"><span>Unit:</span> <span>${balances.find(b => b.tenant_id === selectedTenantId)?.house_number || 'N/A'}</span></div>
+                    <div class="row"><span>Method:</span> <span>${transaction.payment_method}</span></div>
+                    ${transaction.reference_code ? `<div class="row"><span>Ref:</span> <span>${transaction.reference_code}</span></div>` : ''}
+                </div>
+                <div class="details">
+                   <div class="row"><span>Description:</span> <span>${transaction.description || 'Rent Payment'}</span></div>
+                </div>
+                <div class="row total">
+                    <span>AMOUNT PAID:</span>
+                    <span>${transaction.amount.toLocaleString()} KES</span>
+                </div>
+                <div class="footer">
+                    <p>Received By: __________________________</p>
+                    <p>Thank you for your payment!</p>
+                </div>
+                <script>
+                    window.onload = function() { window.print(); window.close(); }
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
     };
 
     const handleEditClick = (transaction) => {
@@ -92,8 +163,9 @@ export default function Finance() {
             setSelectedTenantTransactions(transactions);
             setEditingTransaction(null);
             loadData(); // Refresh main balances
+            toast.success('Transaction updated successfully!');
         } catch (err) {
-            alert('Error updating transaction: ' + err.message);
+            toast.error('Error updating transaction: ' + err.message);
         }
     };
 
@@ -102,6 +174,7 @@ export default function Finance() {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Finance & Payments</h1>
                 <div className="space-x-2">
+                    <button onClick={handleRentRun} className="bg-purple-600 text-white px-4 py-2 rounded">Run Monthly Rent</button>
                     <button onClick={() => setIsChargeModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded">Add Charge</button>
                     <button onClick={() => setIsPayModalOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded">Record Payment</button>
                 </div>
@@ -113,6 +186,7 @@ export default function Finance() {
                     <thead className="bg-gray-50">
                         <tr>
                             <th className="px-6 py-3 text-left">Tenant</th>
+                            <th className="px-6 py-3 text-left">Unit</th>
                             <th className="px-6 py-3 text-left">Balance (Positive = Credit, Negative = Arrears)</th>
                             <th className="px-6 py-3 text-left">Actions</th>
                         </tr>
@@ -120,7 +194,11 @@ export default function Finance() {
                     <tbody>
                         {balances.map(b => (
                             <tr key={b.tenant_id} className="border-t">
-                                <td className="px-6 py-4">{b.full_name}</td>
+                                <td className="px-6 py-4">
+                                    <div className="font-medium">{b.full_name}</div>
+                                    <div className="text-xs text-gray-500">{b.property_name}</div>
+                                </td>
+                                <td className="px-6 py-4">{b.house_number}</td>
                                 <td className={`px-6 py-4 font-bold ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
                                     {b.balance?.toLocaleString()} KES
                                 </td>
@@ -129,7 +207,7 @@ export default function Finance() {
                                 </td>
                             </tr>
                         ))}
-                        {balances.length === 0 && <tr><td colSpan="3" className="p-4 text-center">No financial records found.</td></tr>}
+                        {balances.length === 0 && <tr><td colSpan="4" className="p-4 text-center">No financial records found.</td></tr>}
                     </tbody>
                 </table>
             </div>
@@ -230,8 +308,11 @@ export default function Finance() {
                                                     }`}>
                                                     {t.type === 'Payment' ? '+' : '-'} {t.amount.toLocaleString()}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right space-x-2">
                                                     <button onClick={() => handleEditClick(t)} className="text-indigo-600 hover:text-indigo-900">Edit</button>
+                                                    {t.type === 'Payment' && (
+                                                        <button onClick={() => handlePrintReceipt(t)} className="text-gray-600 hover:text-gray-900 border px-2 py-0.5 rounded text-xs">🖨 Print</button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

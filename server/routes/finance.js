@@ -42,6 +42,40 @@ router.post('/charge', (req, res) => {
     }
 });
 
+// Monthly Rent Run (Charge all active tenants)
+router.post('/rent-run', (req, res) => {
+    try {
+        const activeTenants = db.prepare(`
+            SELECT t.id, h.rent_amount 
+            FROM tenants t 
+            JOIN houses h ON t.house_id = h.id 
+            WHERE t.status = 'Active' AND h.rent_amount > 0
+        `).all();
+
+        const insertStmt = db.prepare(`
+            INSERT INTO transactions (tenant_id, type, amount, description, date)
+            VALUES (?, 'Rent Charge', ?, ?, ?)
+        `);
+
+        const date = new Date().toISOString();
+        const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+        const description = `Monthly Rent - ${month}`;
+
+        const transaction = db.transaction((tenants) => {
+            for (const tenant of tenants) {
+                insertStmt.run(tenant.id, tenant.rent_amount, description, date);
+            }
+        });
+
+        transaction(activeTenants);
+
+        res.json({ success: true, count: activeTenants.length, message: `Generated rent for ${activeTenants.length} active tenants.` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get Balances (Dashboard/Report)
 // Calculated on flight or stored? Calculated is safer for consistency.
 router.get('/balances', (req, res) => {
@@ -50,8 +84,12 @@ router.get('/balances', (req, res) => {
             SELECT 
                 t.id as tenant_id, 
                 t.full_name,
-                SUM(CASE WHEN type = 'Payment' THEN amount ELSE -amount END) as balance
+                h.house_number,
+                p.name as property_name,
+                SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
             FROM tenants t
+            LEFT JOIN houses h ON t.house_id = h.id
+            LEFT JOIN properties p ON h.property_id = p.id
             LEFT JOIN transactions tr ON t.id = tr.tenant_id
             GROUP BY t.id
         `).all();

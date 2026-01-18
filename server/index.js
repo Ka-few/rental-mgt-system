@@ -20,12 +20,14 @@ try {
 }
 
 // Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/tenants', require('./routes/tenants'));
 app.use('/api/properties', require('./routes/properties'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/maintenance', require('./routes/maintenance'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Basic Route
 app.get('/api/status', (req, res) => {
