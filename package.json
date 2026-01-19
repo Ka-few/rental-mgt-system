@@ -25,6 +25,38 @@
     "url": "https://github.com/Ka-few/rental-mgt-system/issues"
   },
   "homepage": "https://github.com/Ka-few/rental-mgt-system#readme",
+  "build": {
+    "appId": "com.rental.management",
+    "productName": "Rental Management System",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "server/**/*",
+      "src/dist/**/*",
+      "!**/node_modules/*/{build,node_gyp_bins,obj,vendor}/**",
+      "!**/node_modules/*/*.{h,cpp,c,o,py,js.map,d.ts}"
+    ],
+    "win": {
+      "icon": "electron/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "icon": "electron/icon.ico",
+      "target": [
+        "AppImage"
+      ]
+    },
+    "mac": {
+      "icon": "electron/icon.ico",
+      "target": [
+        "dmg"
+      ]
+    }
+  },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",

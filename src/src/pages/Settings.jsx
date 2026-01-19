@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../context/ToastContext';
+import { API_URL } from '../config';
 
 const Settings = () => {
+    const toast = useToast();
     const [settings, setSettings] = useState({
         company_name: '',
         company_address: '',
@@ -8,7 +11,7 @@ const Settings = () => {
     });
 
     useEffect(() => {
-        fetch('http://localhost:3000/api/settings')
+        fetch(`${API_URL}/api/settings`)
             .then(res => res.json())
             .then(data => setSettings(data))
             .catch(err => console.error('Error fetching settings:', err));
@@ -21,21 +24,21 @@ const Settings = () => {
     const handleSave = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch('http://localhost:3000/api/settings', {
+            const res = await fetch(`${API_URL}/api/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
             });
-            if (res.ok) alert('Settings saved successfully!');
-            else alert('Failed to save settings');
+            if (res.ok) toast.success('Settings saved successfully!');
+            else toast.error('Failed to save settings');
         } catch (err) {
             console.error(err);
-            alert('Error saving settings');
+            toast.error('Error saving settings');
         }
     };
 
     const handleBackup = () => {
-        window.location.href = 'http://localhost:3000/api/settings/backup';
+        window.location.href = `${API_URL}/api/settings/backup`;
     };
 
     return (

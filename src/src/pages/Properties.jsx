@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { getProperties, createProperty, createHouse, getHouses, updateHouse } from '../services/propertyService';
+import { useToast } from '../context/ToastContext';
 
 export default function Properties() {
+    const toast = useToast();
     const [properties, setProperties] = useState([]);
     const [selectedProperty, setSelectedProperty] = useState(null); // For viewing units
     const [units, setUnits] = useState([]);
@@ -30,8 +32,9 @@ export default function Properties() {
             setIsPropModalOpen(false);
             loadProperties();
             setPropForm({ name: '', address: '', total_units: 0 });
+            toast.success('Property created successfully');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message || 'Error creating property');
         }
     };
 
@@ -77,8 +80,9 @@ export default function Properties() {
             const data = await getHouses(selectedProperty.id);
             setUnits(data);
             setUnitForm({ house_number: '', type: '1 BDR', rent_amount: 0, amenities: {} });
+            toast.success(isEditUnitMode ? 'Unit updated successfully' : 'Unit created successfully');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message || 'Error saving unit');
         }
     };
 

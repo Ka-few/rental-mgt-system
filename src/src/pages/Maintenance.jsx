@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { getRequests, createRequest, updateRequest, deleteRequest } from '../services/maintenanceService';
 import { getProperties, getHouses } from '../services/propertyService';
+import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Maintenance() {
+    const toast = useToast();
     const [requests, setRequests] = useState([]);
     const [properties, setProperties] = useState([]);
     const [houses, setHouses] = useState([]);
+    const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, id: null });
 
     // Modals
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -91,18 +95,23 @@ export default function Maintenance() {
             }
             setIsModalOpen(false);
             loadRequests();
+            toast.success(isEditMode ? 'Request updated successfully' : 'Request created successfully');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message || 'Error saving request');
         }
     };
 
     const handleDelete = async (id) => {
-        if (!confirm('Are you sure you want to delete this request?')) return;
+        setConfirmDelete({ isOpen: true, id });
+    };
+
+    const confirmDeleteRequest = async () => {
         try {
-            await deleteRequest(id);
+            await deleteRequest(confirmDelete.id);
+            toast.success('Request deleted successfully');
             loadRequests();
         } catch (err) {
-            alert(err.message);
+            toast.error('Error deleting request: ' + err.message);
         }
     };
 
@@ -114,9 +123,10 @@ export default function Maintenance() {
         } else {
             try {
                 await updateRequest(id, { status: newStatus });
+                toast.success('Status updated successfully');
                 loadRequests();
             } catch (err) {
-                console.error(err);
+                toast.error('Error updating status: ' + err.message);
             }
         }
     };
@@ -130,9 +140,10 @@ export default function Maintenance() {
                 completed_date: closeForm.completed_date
             });
             setIsCloseModalOpen(false);
+            toast.success('Request closed successfully');
             loadRequests();
         } catch (err) {
-            alert(err.message);
+            toast.error('Error closing request: ' + err.message);
         }
     };
 
@@ -171,8 +182,8 @@ export default function Maintenance() {
                                 </td>
                                 <td className="px-6 py-4">
                                     <span className={`px-2 rounded text-xs ${r.status === 'Closed' ? 'bg-gray-100 text-gray-800' :
-                                            r.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                                'bg-green-100 text-green-800'
+                                        r.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-green-100 text-green-800'
                                         }`}>
                                         {r.status}
                                     </span>
@@ -254,6 +265,16 @@ export default function Maintenance() {
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={confirmDelete.isOpen}
+                onClose={() => setConfirmDelete({ isOpen: false, id: null })}
+                onConfirm={confirmDeleteRequest}
+                title="Delete Request"
+                message="Are you sure you want to delete this maintenance request?"
+                confirmText="Delete"
+                isDangerous={true}
+            />
         </div>
     );
 }

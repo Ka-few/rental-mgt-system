@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import logo from '../assets/logo.png';
 
 const navigation = [
     { name: 'Dashboard', href: '/' },
@@ -15,8 +16,14 @@ export default function Sidebar() {
 
     return (
         <div className="flex flex-col w-64 bg-slate-900 h-screen text-white">
-            <div className="flex items-center justify-center h-20 shadow-md">
-                <h1 className="text-2xl font-bold text-blue-400">RentalMgr</h1>
+            <div className="flex items-center justify-center h-36 shadow-md px-4 py-6">
+                <div className="relative flex items-center justify-center w-28 h-28 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-full shadow-lg">
+                    <img
+                        src={logo}
+                        alt="Logo"
+                        className="w-20 h-20 object-contain p-2"
+                    />
+                </div>
             </div>
             <ul className="flex-col py-4">
                 {navigation.map((item) => {

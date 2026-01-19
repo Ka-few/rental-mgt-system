@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent } from '../services/financeService';
 import { getTenants } from '../services/tenantService';
 import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
+import { API_URL } from '../config';
 
 export default function Finance() {
     const toast = useToast();
@@ -31,7 +33,7 @@ export default function Finance() {
     useEffect(() => {
         loadData();
         getTenants().then(setTenants).catch(console.error);
-        fetch('http://localhost:3000/api/settings')
+        fetch(`${API_URL} /api/settings`)
             .then(res => res.json())
             .then(data => setCompanySettings(data))
             .catch(err => console.error('Error fetching settings:', err));
@@ -103,7 +105,7 @@ export default function Finance() {
     const handlePrintReceipt = (transaction) => {
         const printWindow = window.open('', '', 'width=600,height=600');
         printWindow.document.write(`
-            <html>
+    < html >
             <head>
                 <title>Payment Receipt</title>
                 <style>
@@ -145,8 +147,8 @@ export default function Finance() {
                     window.onload = function() { window.print(); window.close(); }
                 </script>
             </body>
-            </html>
-        `);
+            </html >
+    `);
         printWindow.document.close();
     };
 
@@ -199,7 +201,7 @@ export default function Finance() {
                                     <div className="text-xs text-gray-500">{b.property_name}</div>
                                 </td>
                                 <td className="px-6 py-4">{b.house_number}</td>
-                                <td className={`px-6 py-4 font-bold ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                <td className={`px - 6 py - 4 font - bold ${b.balance < 0 ? 'text-red-500' : 'text-green-500'} `}>
                                     {b.balance?.toLocaleString()} KES
                                 </td>
                                 <td className="px-6 py-4">
@@ -295,17 +297,17 @@ export default function Finance() {
                                                     {new Date(t.date).toLocaleDateString()}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.type === 'Payment' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                        }`}>
+                                                    <span className={`px - 2 inline - flex text - xs leading - 5 font - semibold rounded - full ${t.type === 'Payment' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                        } `}>
                                                         {t.type}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-gray-500">
                                                     {t.description || '-'}
-                                                    {t.type === 'Payment' && t.payment_method && ` via ${t.payment_method}`}
+                                                    {t.type === 'Payment' && t.payment_method && ` via ${t.payment_method} `}
                                                 </td>
-                                                <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${t.type === 'Payment' ? 'text-green-600' : 'text-red-600'
-                                                    }`}>
+                                                <td className={`px - 6 py - 4 whitespace - nowrap text - sm text - right font - medium ${t.type === 'Payment' ? 'text-green-600' : 'text-red-600'
+                                                    } `}>
                                                     {t.type === 'Payment' ? '+' : '-'} {t.amount.toLocaleString()}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right space-x-2">
