@@ -15,6 +15,48 @@ router.get('/backup', (req, res) => {
     });
 });
 
+// Clear All Data
+router.post('/clear', (req, res) => {
+    try {
+        const tables = [
+            'transactions',
+            'tenants',
+            'houses',
+            'properties',
+            'maintenance_requests'
+        ];
+
+        const transaction = db.transaction(() => {
+            // Delete data in order
+            db.prepare('DELETE FROM transactions').run();
+            db.prepare('DELETE FROM maintenance_requests').run();
+            db.prepare('DELETE FROM tenants').run();
+            db.prepare('DELETE FROM houses').run();
+            db.prepare('DELETE FROM properties').run();
+
+            // Optional: Reset settings to default
+            db.prepare('DELETE FROM settings').run();
+            const defaultSettings = [
+                { key: 'company_name', value: 'Rental Management System' },
+                { key: 'company_address', value: '123 Main St, City' },
+                { key: 'company_phone', value: '0700 000 000' }
+            ];
+            const seedStmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+            defaultSettings.forEach(s => seedStmt.run(s.key, s.value));
+
+            // Reset autoincrement
+            db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'tenants', 'houses', 'properties', 'maintenance_requests', 'settings')").run();
+        });
+
+        transaction();
+        console.log('SYSTEM WIPE: All tables cleared and settings reset to default.');
+        res.json({ message: 'System has been successfully reset to factory defaults!' });
+    } catch (err) {
+        console.error('SYSTEM WIPE ERROR:', err);
+        res.status(500).json({ message: `Full system reset failed: ${err.message}` });
+    }
+});
+
 // Get Settings
 router.get('/', (req, res) => {
     try {
@@ -41,8 +83,8 @@ router.post('/', (req, res) => {
         transaction();
         res.json({ message: 'Settings updated successfully' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error updating settings' });
+        console.error('SETTINGS UPDATE ERROR:', err);
+        res.status(500).json({ message: `Database error while saving settings: ${err.message}` });
     }
 });
 

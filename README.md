@@ -16,6 +16,7 @@ A comprehensive desktop application for managing rental properties, tenants, and
 ### Advanced Features
 - **Dashboard Analytics** - Revenue trends and occupancy charts
 - **Search & Filter** - Quickly find tenants by name, ID, or phone
+- **User Management** - Securely change passwords from the Settings page
 - **Toast Notifications** - Professional feedback for all actions
 - **Database Backup** - Download and restore your data
 - **Receipt Printing** - Generate payment receipts with company branding

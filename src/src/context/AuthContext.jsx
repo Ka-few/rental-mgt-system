@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../config';
+import api from '../services/api';
 
 const AuthContext = createContext();
 
@@ -14,15 +14,8 @@ export const AuthProvider = ({ children }) => {
             const token = localStorage.getItem('token');
             if (token) {
                 try {
-                    const response = await fetch(`${API_URL}/api/auth/me`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        setUser(data.user);
-                    } else {
-                        localStorage.removeItem('token');
-                    }
+                    const response = await api.get('/auth/me');
+                    setUser(response.data.user);
                 } catch (error) {
                     console.error("Auth check failed", error);
                     localStorage.removeItem('token');
@@ -35,24 +28,16 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
-            const response = await fetch(`${API_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            const response = await api.post('/auth/login', { username, password });
+            const data = response.data;
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Login failed');
-            }
-
-            const data = await response.json();
             localStorage.setItem('token', data.token);
             setUser(data.user);
             navigate('/');
             return true;
         } catch (error) {
-            throw error;
+            console.error("Login failed", error);
+            throw new Error(error.response?.data?.message || 'Login failed');
         }
     };
 

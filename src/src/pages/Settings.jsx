@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import { API_URL } from '../config';
+import api from '../services/api';
+import { changePassword } from '../services/authService';
 
 const Settings = () => {
     const toast = useToast();
@@ -10,10 +12,17 @@ const Settings = () => {
         company_phone: ''
     });
 
+    // Password change state
+    const [pwdForm, setPwdForm] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
+    const [showPasswords, setShowPasswords] = useState(false);
+
     useEffect(() => {
-        fetch(`${API_URL}/api/settings`)
-            .then(res => res.json())
-            .then(data => setSettings(data))
+        api.get('/settings')
+            .then(res => setSettings(res.data))
             .catch(err => console.error('Error fetching settings:', err));
     }, []);
 
@@ -21,19 +30,22 @@ const Settings = () => {
         setSettings({ ...settings, [e.target.name]: e.target.value });
     };
 
+    const handlePwdChange = (e) => {
+        setPwdForm({ ...pwdForm, [e.target.name]: e.target.value });
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch(`${API_URL}/api/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings)
+            await api.post('/settings', {
+                company_name: settings.company_name,
+                company_address: settings.company_address,
+                company_phone: settings.company_phone
             });
-            if (res.ok) toast.success('Settings saved successfully!');
-            else toast.error('Failed to save settings');
+            toast.success('Settings updated successfully!');
         } catch (err) {
-            console.error(err);
-            toast.error('Error saving settings');
+            console.error('Settings Update Error:', err);
+            toast.error(err.response?.data?.message || 'Failed to save settings. Please ensure the server is running.');
         }
     };
 
@@ -41,63 +53,210 @@ const Settings = () => {
         window.location.href = `${API_URL}/api/settings/backup`;
     };
 
-    return (
-        <div>
-            <h1 className="text-2xl font-bold mb-6">System Settings</h1>
+    const handleClearData = async () => {
+        if (!window.confirm('WARNING: This will permanently delete ALL tenants, houses, properties, and transactions. This action CANNOT be undone. Are you absolutely sure?')) {
+            return;
+        }
 
-            <div className="bg-white p-6 rounded shadow mb-6">
-                <h2 className="text-xl font-semibold mb-4">Company Details (For Receipts)</h2>
-                <form onSubmit={handleSave}>
-                    <div className="mb-4">
-                        <label className="block text-gray-700 text-sm font-bold mb-2">Company Name</label>
+        try {
+            await api.post('/settings/clear');
+            toast.success('System data cleared successfully!');
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.message || 'Failed to clear system data');
+        }
+    };
+
+    const onUpdatePassword = async (e) => {
+        e.preventDefault();
+
+        console.log('Form submission started');
+
+        if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+            return toast.error('New passwords do not match');
+        }
+        if (pwdForm.newPassword.length < 6) {
+            return toast.error('Password must be at least 6 characters');
+        }
+
+        try {
+            console.log('Calling changePassword service...');
+            const result = await changePassword({
+                currentPassword: pwdForm.currentPassword,
+                newPassword: pwdForm.newPassword
+            });
+            console.log('Password change success:', result);
+            toast.success('Password updated successfully!');
+            setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        } catch (err) {
+            console.error('Frontend Password Error Detail:', {
+                status: err.response?.status,
+                data: err.response?.data,
+                message: err.message
+            });
+            const errorMsg = err.response?.data?.message || 'Current password incorrect';
+            toast.error(errorMsg);
+        }
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto py-8 px-4 pb-20">
+            <h1 className="text-3xl font-extrabold mb-8 text-gray-900 border-b pb-4">System Settings</h1>
+
+            {/* Company Profile Section */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                <div className="flex items-center gap-3 mb-8">
+                    <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">Company Profile</h2>
+                </div>
+                <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="md:col-span-2">
+                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Company Name</label>
                         <input
                             name="company_name"
                             value={settings.company_name || ''}
                             onChange={handleChange}
-                            className="w-full border p-2 rounded"
+                            placeholder="e.g. Royal Apartments Ltd"
+                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium placeholder-gray-300"
                         />
                     </div>
-                    <div className="mb-4">
-                        <label className="block text-gray-700 text-sm font-bold mb-2">Address</label>
+                    <div>
+                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Address</label>
                         <input
                             name="company_address"
                             value={settings.company_address || ''}
                             onChange={handleChange}
-                            className="w-full border p-2 rounded"
+                            placeholder="e.g. 123 Business Way, Nairobi"
+                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
                         />
                     </div>
-                    <div className="mb-4">
-                        <label className="block text-gray-700 text-sm font-bold mb-2">Phone</label>
+                    <div>
+                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Support Phone</label>
                         <input
                             name="company_phone"
                             value={settings.company_phone || ''}
                             onChange={handleChange}
-                            className="w-full border p-2 rounded"
+                            placeholder="e.g. +254 700 000 000"
+                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
                         />
                     </div>
-                    <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                        Save Details
+                    <div className="md:col-span-2">
+                        <button type="submit" className="bg-emerald-600 text-white px-10 py-4 rounded-xl font-black hover:bg-emerald-700 transition-all shadow-xl hover:shadow-emerald-200 active:scale-95">
+                            SAVE BRANDING
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {/* Security Section */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                <div className="flex justify-between items-center mb-8">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800">Security</h2>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowPasswords(!showPasswords)}
+                        className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all border-2 ${showPasswords ? 'bg-amber-600 border-amber-600 text-white' : 'border-gray-200 text-gray-500 hover:border-amber-600 hover:text-amber-600'}`}
+                    >
+                        {showPasswords ? 'Hide Passwords' : 'View Passwords'}
+                    </button>
+                </div>
+
+                <form onSubmit={onUpdatePassword} className="space-y-6">
+                    <div className="max-w-md">
+                        <label className="block text-red-500 text-xs font-black mb-2 ml-1 uppercase tracking-widest">Type Current Password</label>
+                        <input
+                            type={showPasswords ? "text" : "password"}
+                            name="currentPassword"
+                            value={pwdForm.currentPassword}
+                            onChange={handlePwdChange}
+                            placeholder="••••••••"
+                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
+                            required
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-gray-600 text-xs font-black mb-2 ml-1 uppercase tracking-widest">New Password</label>
+                            <input
+                                type={showPasswords ? "text" : "password"}
+                                name="newPassword"
+                                value={pwdForm.newPassword}
+                                onChange={handlePwdChange}
+                                placeholder="Min. 6 chars"
+                                className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-gray-600 text-xs font-black mb-2 ml-1 uppercase tracking-widest">Confirm New</label>
+                            <input
+                                type={showPasswords ? "text" : "password"}
+                                name="confirmPassword"
+                                value={pwdForm.confirmPassword}
+                                onChange={handlePwdChange}
+                                placeholder="••••••••"
+                                className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
+                                required
+                            />
+                        </div>
+                    </div>
+                    <button type="submit" className="bg-amber-600 text-white px-10 py-4 rounded-xl font-black hover:bg-amber-700 transition-all shadow-xl hover:shadow-amber-200 active:scale-95">
+                        UPDATE PASSWORD
                     </button>
                 </form>
             </div>
 
-            <div className="bg-white p-6 rounded shadow mb-6">
-                <h2 className="text-xl font-semibold mb-4">Data Management</h2>
-                <p className="text-gray-600 mb-4">
-                    Download a backup of your database. Keep this file safe. To restore, you will need to manually replace the database file.
-                </p>
-                <button
-                    onClick={handleBackup}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    Download Database Backup
-                </button>
+            {/* Advanced Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" /><path fillRule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                        Export Database
+                    </h3>
+                    <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                        Securely download your current system data to a local file for safekeeping.
+                    </p>
+                    <button
+                        onClick={handleBackup}
+                        className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
+                        Download Backup
+                    </button>
+                </div>
+
+                <div className="bg-red-50 p-8 rounded-2xl shadow-sm border-2 border-red-100">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-red-600 uppercase italic">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.41-1.196 2.102-1.196 2.512 0l.96 2.833a1.5 1.5 0 001.077 1.077l2.833.96c1.196.41 1.196 2.102 0 2.512l-2.833.96a1.5 1.5 0 00-1.077 1.077l-.96 2.833c-.41 1.196-2.102 1.196-2.512 0l-.96-2.833a1.5 1.5 0 00-1.077-1.077l-2.833-.96c-1.196-.41-1.196-2.102 0-2.512l2.833-.96a1.5 1.5 0 001.077-1.077l.96-2.833z" clipRule="evenodd" /></svg>
+                        Wipe System Data
+                    </h3>
+                    <p className="text-red-700 text-xs font-bold mb-8 uppercase leading-tight bg-white/50 p-3 rounded-lg border border-red-200">
+                        CAUTION: This will delete ALL tenants, houses, and transactions. The app will be reset as if new. This action is IRREVERSIBLE.
+                    </p>
+                    <button
+                        onClick={handleClearData}
+                        className="w-full py-4 bg-white text-red-600 border-2 border-red-600 rounded-xl font-black hover:bg-red-600 hover:text-white transition-all active:scale-95"
+                    >
+                        RESET ALL DATA
+                    </button>
+                </div>
             </div>
         </div>
     );
 };
 
 export default Settings;
+
+

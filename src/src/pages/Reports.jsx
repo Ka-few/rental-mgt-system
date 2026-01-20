@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getFinancialReport, getOccupancyReport, getArrearsReport } from '../services/reportService';
 import { exportToExcel, formatDataForExport } from '../utils/export';
 import { useToast } from '../context/ToastContext';
+import api from '../services/api';
 
 export default function Reports() {
     const toast = useToast();
@@ -16,9 +17,13 @@ export default function Reports() {
 
     // Arrears State
     const [arrearsData, setArrearsData] = useState([]);
+    const [companySettings, setCompanySettings] = useState({});
 
     useEffect(() => {
         loadData();
+        api.get('/settings')
+            .then(res => setCompanySettings(res.data))
+            .catch(err => console.error('Error fetching settings:', err));
     }, [activeTab]);
 
     const loadData = async () => {
@@ -88,7 +93,18 @@ export default function Reports() {
 
     return (
         <div className="p-4">
-            <div className="flex justify-between items-center mb-6">
+            {/* Hidden Print Header */}
+            <div className="hidden print:block text-center border-b-2 border-dashed border-gray-400 pb-4 mb-6">
+                <h1 className="text-3xl font-black uppercase text-gray-900">{companySettings.company_name || 'REAL ESTATE MANAGEMENT'}</h1>
+                <p className="text-gray-600 font-medium">{companySettings.company_address || ''}</p>
+                <p className="text-gray-600 font-medium">{companySettings.company_phone || ''}</p>
+                <div className="mt-4 flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500">
+                    <span>Generated: {new Date().toLocaleString()}</span>
+                    <span>Report Type: {activeTab.toUpperCase()}</span>
+                </div>
+            </div>
+
+            <div className="flex justify-between items-center mb-6 print:hidden">
                 <h1 className="text-2xl font-bold">System Reports</h1>
                 <div className="flex gap-2">
                     <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">

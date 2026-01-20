@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+require('dotenv').config();
 const { db, initDb } = require('./db/init');
 
 const app = express();

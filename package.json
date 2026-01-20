@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A native desktop app for rental management",
   "main": "electron/main.js",
+  "author": "Ka-few <support@ka-few.com>",
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently -k \"npm run dev:frontend\" \"npm run dev:electron\"",
@@ -13,18 +14,24 @@
     "build": "npm run build --prefix src && electron-builder",
     "postinstall": "electron-builder install-app-deps"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Ka-few/rental-mgt-system.git"
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.0",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^90.3"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/Ka-few/rental-mgt-system/issues"
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.4.0",
+    "electron-rebuild": "^3.2.9",
+    "wait-on": "^9.0.3"
   },
-  "homepage": "https://github.com/Ka-few/rental-mgt-system#readme",
   "build": {
     "appId": "com.rental.management",
     "productName": "Rental Management System",
@@ -35,34 +42,23 @@
       "electron/**/*",
       "server/**/*",
       "src/dist/**/*",
-      "!**/node_modules/*/{build,node_gyp_bins,obj,vendor}/**",
-      "!**/node_modules/*/*.{h,cpp,c,o,py,js.map,d.ts}"
+      "!**/*.db"
     ],
+    "asar": true,
     "win": {
-      "icon": "electron/icon.ico",
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
-      ]
+      ],
+      "verifyUpdateCodeSignature": false
     },
     "linux": {
-      "icon": "electron/icon.ico",
+      "icon": "build/icon.png",
       "target": [
-        "AppImage"
-      ]
-    },
-    "mac": {
-      "icon": "electron/icon.ico",
-      "target": [
-        "dmg"
-      ]
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
     }
-  },
-  "devDependencies": {
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^26.4.0",
-    "electron-rebuild": "^3.2.9",
-    "wait-on": "^9.0.3"
   }
 }

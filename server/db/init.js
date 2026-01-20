@@ -4,6 +4,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../rental.db');
+console.log('SQLITE DATABASE PATH:', dbPath);
 const db = new Database(dbPath, { verbose: console.log });
 
 const schema = `
@@ -106,8 +107,9 @@ function initDb() {
   console.log('Initializing Database...');
   try {
     db.exec(schema);
+    seedSettings();
     seedAdminUser();
-    console.log('Database Schema Applied Successfully.');
+    console.log('Database Schema Applied & Default Settings Seeded Successfully.');
   } catch (err) {
     console.error('Error initializing database:', err);
   }
