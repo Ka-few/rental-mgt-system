@@ -1,6 +1,8 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../context/AuthContext';
+import HelpDrawer from '../components/Help/HelpDrawer';
+import GuidedTour from '../components/Help/GuidedTour';
 
 export default function MainLayout() {
     const { logout, user } = useAuth();
@@ -19,6 +21,8 @@ export default function MainLayout() {
                     <Outlet />
                 </div>
             </div>
+            <HelpDrawer />
+            <GuidedTour />
         </div>
     );
 }

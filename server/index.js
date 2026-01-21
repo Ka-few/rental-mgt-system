@@ -28,7 +28,9 @@ app.use('/api/finance', require('./routes/finance'));
 app.use('/api/maintenance', require('./routes/maintenance'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/mri', require('./routes/mri'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/help', require('./routes/help'));
 
 // Basic Route
 app.get('/api/status', (req, res) => {

@@ -14,11 +14,28 @@ router.get('/', (req, res) => {
 
 // Create property
 router.post('/', (req, res) => {
-    const { name, address, total_units } = req.body;
+    const { name, address, total_units, type, annual_income_estimate, kra_pin } = req.body;
     try {
-        const stmt = db.prepare('INSERT INTO properties (name, address, total_units) VALUES (?, ?, ?)');
-        const info = stmt.run(name, address, total_units || 0);
+        const stmt = db.prepare('INSERT INTO properties (name, address, total_units, type, annual_income_estimate, kra_pin) VALUES (?, ?, ?, ?, ?, ?)');
+        const info = stmt.run(name, address, total_units || 0, type || 'Residential', annual_income_estimate || 0, kra_pin || '');
         res.json({ id: info.lastInsertRowid, ...req.body });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update Property
+router.put('/:id', (req, res) => {
+    const { name, address, total_units, type, annual_income_estimate, kra_pin } = req.body;
+    const { id } = req.params;
+    try {
+        const stmt = db.prepare(`
+            UPDATE properties 
+            SET name = ?, address = ?, total_units = ?, type = ?, annual_income_estimate = ?, kra_pin = ?
+            WHERE id = ?
+        `);
+        stmt.run(name, address, total_units, type, annual_income_estimate, kra_pin, id);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

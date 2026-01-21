@@ -14,23 +14,44 @@ router.get('/financial', (req, res) => {
             params = [startDate, endDate];
         }
 
-        // Total Revenue
+        // Total Revenue (Payments collected)
         const revenue = db.prepare(`SELECT SUM(amount) as total FROM transactions WHERE type = 'Payment' ${dateFilter}`).get(...params);
 
+        // Total Penalties Charged ('Adjustment')
+        const penalties = db.prepare(`SELECT SUM(amount) as total FROM transactions WHERE type = 'Adjustment' ${dateFilter}`).get(...params);
+
+        // Total MRI Tax
+        let mriDateFilter = "";
+        let mriParams = [];
+        if (startDate && endDate) {
+            mriDateFilter = "AND reference_date BETWEEN ? AND ?";
+            mriParams = [startDate, endDate];
+        }
+        const mriTax = db.prepare(`SELECT SUM(tax_payable) as total FROM mri_records WHERE status != 'NIL' ${mriDateFilter}`).get(...mriParams);
+
         // Total Expenses (Maintenance)
-        // Adjust date filter for maintenance (using completed_date)
         let maintDateFilter = "";
+        let maintParams = [];
         if (startDate && endDate) {
             maintDateFilter = "AND completed_date BETWEEN ? AND ?";
+            maintParams = [startDate, endDate];
         }
-        const expenses = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Closed' ${maintDateFilter}`).get(...params);
+        const expenses = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Closed' ${maintDateFilter}`).get(...maintParams);
+
+        const totalRevenue = revenue.total || 0;
+        const totalExpenses = expenses.total || 0;
+        const totalTax = mriTax.total || 0;
+        const totalPenalties = penalties.total || 0;
 
         res.json({
-            totalRevenue: revenue.total || 0,
-            totalExpenses: expenses.total || 0,
-            netIncome: (revenue.total || 0) - (expenses.total || 0)
+            totalRevenue: totalRevenue,
+            totalExpenses: totalExpenses,
+            mriTax: totalTax,
+            totalPenalties: totalPenalties,
+            netIncome: totalRevenue - totalExpenses - totalTax
         });
     } catch (err) {
+        console.error('FINANCIAL REPORT ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -65,6 +86,7 @@ router.get('/occupancy', (req, res) => {
 
         res.json(report);
     } catch (err) {
+        console.error('OCCUPANCY REPORT ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -80,9 +102,10 @@ router.get('/arrears', (req, res) => {
         const tenants = db.prepare(`
             SELECT 
                 t.id, t.full_name, t.phone, t.house_id,
-                SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
+                SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance,
+                COALESCE(SUM(CASE WHEN tr.type = 'Adjustment' THEN tr.amount ELSE 0 END), 0) as total_penalties
             FROM tenants t
-            JOIN transactions tr ON t.id = tr.tenant_id
+            LEFT JOIN transactions tr ON t.id = tr.tenant_id
             GROUP BY t.id
             HAVING balance < 0
             ORDER BY balance ASC
@@ -103,6 +126,45 @@ router.get('/arrears', (req, res) => {
 
         res.json(result);
     } catch (err) {
+        console.error('ARREARS REPORT ERROR:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Detailed Transactions Report (for Export)
+router.get('/transactions', (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        let query = `
+            SELECT 
+                tr.date, 
+                tr.type, 
+                tr.amount, 
+                tr.description, 
+                tr.payment_method, 
+                tr.reference_code,
+                t.full_name as tenant_name,
+                h.house_number,
+                p.name as property_name
+            FROM transactions tr
+            JOIN tenants t ON tr.tenant_id = t.id
+            LEFT JOIN houses h ON t.house_id = h.id
+            LEFT JOIN properties p ON h.property_id = p.id
+            WHERE 1=1
+        `;
+        let params = [];
+
+        if (startDate && endDate) {
+            query += " AND tr.date BETWEEN ? AND ?";
+            params = [startDate, endDate];
+        }
+
+        query += " ORDER BY tr.date DESC";
+
+        const transactions = db.prepare(query).all(...params);
+        res.json(transactions);
+    } catch (err) {
+        console.error('DETAILED TRANSACTIONS ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -69,7 +69,41 @@ router.post('/rent-run', (req, res) => {
 
         transaction(activeTenants);
 
-        res.json({ success: true, count: activeTenants.length, message: `Generated rent for ${activeTenants.length} active tenants.` });
+        // --- NEW: Automatically apply penalties during rent run ---
+        try {
+            const settings = {};
+            db.prepare("SELECT key, value FROM settings WHERE key IN ('penalty_enabled', 'penalty_type', 'penalty_amount')")
+                .all().forEach(s => settings[s.key] = s.value);
+
+            if (settings.penalty_enabled === 'true') {
+                const lateTenants = db.prepare(`
+                    SELECT t.id, h.rent_amount, SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
+                    FROM tenants t
+                    JOIN houses h ON t.house_id = h.id
+                    LEFT JOIN transactions tr ON t.id = tr.tenant_id
+                    WHERE t.status = 'Active'
+                    GROUP BY t.id
+                    HAVING balance < (-2 * h.rent_amount)
+                `).all();
+
+                const penaltyStmt = db.prepare(`INSERT INTO transactions (tenant_id, type, amount, description, date) VALUES (?, 'Adjustment', ?, ?, ?)`);
+                const penaltyDate = new Date().toISOString();
+
+                db.transaction(() => {
+                    for (const tenant of lateTenants) {
+                        const amount = settings.penalty_type === 'Fixed' ? parseFloat(settings.penalty_amount) : Math.abs(tenant.balance) * (parseFloat(settings.penalty_amount) / 100);
+                        if (amount > 0) {
+                            penaltyStmt.run(tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, penaltyDate);
+                        }
+                    }
+                })();
+            }
+        } catch (pErr) {
+            console.error('Penalty application during rent run failed:', pErr);
+        }
+        // --- END PENALTY LOGIC ---
+
+        res.json({ success: true, count: activeTenants.length, message: `Generated rent for ${activeTenants.length} active tenants (and checked for penalties).` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -124,6 +158,70 @@ router.put('/transactions/:id', (req, res) => {
 
         res.json({ message: 'Transaction updated' });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Apply Penalties (Detect 2+ months default)
+router.get('/apply-penalties', (req, res) => {
+    res.status(405).json({
+        error: 'Method Not Allowed',
+        message: 'Please use the "Apply Penalties" button on the Finance page in the application to trigger this calculation.'
+    });
+});
+
+router.post('/apply-penalties', (req, res) => {
+    try {
+        const settings = {};
+        db.prepare("SELECT key, value FROM settings WHERE key IN ('penalty_enabled', 'penalty_type', 'penalty_amount')")
+            .all().forEach(s => settings[s.key] = s.value);
+
+        if (settings.penalty_enabled !== 'true') {
+            return res.json({ success: false, message: 'Penalties are disabled.' });
+        }
+
+        const activeTenants = db.prepare(`
+            SELECT 
+                t.id, t.full_name, h.rent_amount,
+                SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
+            FROM tenants t
+            JOIN houses h ON t.house_id = h.id
+            LEFT JOIN transactions tr ON t.id = tr.tenant_id
+            WHERE t.status = 'Active'
+            GROUP BY t.id, h.rent_amount
+            HAVING balance < (-2 * h.rent_amount) -- Default: Balance is twice the monthly rent (approx 2 months unpaid)
+        `).all();
+
+        const insertStmt = db.prepare(`
+            INSERT INTO transactions (tenant_id, type, amount, description, date)
+            VALUES (?, 'Adjustment', ?, ?, ?)
+        `);
+
+        let appliedCount = 0;
+        const date = new Date().toISOString();
+
+        db.transaction(() => {
+            for (const tenant of activeTenants) {
+                let amount = 0;
+                const balanceVal = tenant.balance || 0;
+                const arrears = Math.abs(balanceVal);
+
+                if (settings.penalty_type === 'Fixed') {
+                    amount = parseFloat(settings.penalty_amount || 0);
+                } else {
+                    amount = arrears * (parseFloat(settings.penalty_amount || 0) / 100);
+                }
+
+                if (amount > 0) {
+                    insertStmt.run(tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, date);
+                    appliedCount++;
+                }
+            }
+        })();
+
+        res.json({ success: true, count: appliedCount, message: `Applied penalties to ${appliedCount} tenants.` });
+    } catch (err) {
+        console.error('APPLY PENALTIES ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });

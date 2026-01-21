@@ -18,3 +18,12 @@ export const getArrearsReport = async () => {
     const response = await api.get('/reports/arrears');
     return response.data;
 };
+
+export const getDetailedTransactions = async (startDate, endDate) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+
+    const response = await api.get(`/reports/transactions?${params.toString()}`);
+    return response.data;
+};

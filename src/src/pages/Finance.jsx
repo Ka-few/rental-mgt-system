@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent } from '../services/financeService';
+import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent, applyPenalties } from '../services/financeService';
 import { getTenants } from '../services/tenantService';
 import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
@@ -374,6 +374,21 @@ export default function Finance() {
         }
     };
 
+    const handleApplyPenalties = async () => {
+        if (!window.confirm('This will apply late payment penalties to all tenants defaulted for 2+ months. Continue?')) return;
+        try {
+            const res = await applyPenalties();
+            if (res.success) {
+                toast.success(res.message);
+                loadData();
+            } else {
+                toast.info(res.message);
+            }
+        } catch (err) {
+            toast.error(err.message || 'Failed to apply penalties');
+        }
+    };
+
     const handleViewHistory = useCallback((tenant) => {
         setSelectedTenant(tenant);
         setIsHistoryModalOpen(true);
@@ -384,9 +399,10 @@ export default function Finance() {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Finance & Payments</h1>
                 <div className="space-x-2">
-                    <button onClick={handleRentRun} className="bg-purple-600 text-white px-4 py-2 rounded">Run Monthly Rent</button>
-                    <button onClick={() => setIsChargeModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded">Add Charge</button>
-                    <button onClick={() => setIsPayModalOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded">Record Payment</button>
+                    <button onClick={handleApplyPenalties} className="bg-amber-600 text-white px-4 py-2 rounded shadow hover:bg-amber-700 transition-colors">Apply Penalties</button>
+                    <button onClick={handleRentRun} className="bg-purple-600 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition-colors">Run Monthly Rent</button>
+                    <button onClick={() => setIsChargeModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded shadow hover:bg-red-700 transition-colors">Add Charge</button>
+                    <button onClick={() => setIsPayModalOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition-colors">Record Payment</button>
                 </div>
             </div>
 

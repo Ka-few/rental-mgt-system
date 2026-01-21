@@ -9,7 +9,11 @@ const Settings = () => {
     const [settings, setSettings] = useState({
         company_name: '',
         company_address: '',
-        company_phone: ''
+        company_phone: '',
+        mri_enabled: 'false',
+        penalty_enabled: 'false',
+        penalty_type: 'Fixed',
+        penalty_amount: '0'
     });
 
     // Password change state
@@ -40,7 +44,11 @@ const Settings = () => {
             await api.post('/settings', {
                 company_name: settings.company_name,
                 company_address: settings.company_address,
-                company_phone: settings.company_phone
+                company_phone: settings.company_phone,
+                mri_enabled: settings.mri_enabled,
+                penalty_enabled: settings.penalty_enabled,
+                penalty_type: settings.penalty_type,
+                penalty_amount: settings.penalty_amount
             });
             toast.success('Settings updated successfully!');
         } catch (err) {
@@ -147,10 +155,107 @@ const Settings = () => {
                     </div>
                     <div className="md:col-span-2">
                         <button type="submit" className="bg-emerald-600 text-white px-10 py-4 rounded-xl font-black hover:bg-emerald-700 transition-all shadow-xl hover:shadow-emerald-200 active:scale-95">
-                            SAVE BRANDING
+                            SAVE COMPANY PROFILE
                         </button>
                     </div>
                 </form>
+            </div>
+
+            {/* KRA MRI Settings Section */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                <div className="flex items-center gap-3 mb-8">
+                    <div className="p-3 bg-blue-100 rounded-xl text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 00-2 2z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">KRA MRI Tax Settings</h2>
+                </div>
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div>
+                            <h3 className="font-bold text-gray-800">Enable MRI Tracking</h3>
+                            <p className="text-sm text-gray-500">Automatically calculate 7.5% Residential Rental Income Tax</p>
+                        </div>
+                        <button
+                            onClick={() => setSettings({ ...settings, mri_enabled: settings.mri_enabled === 'true' ? 'false' : 'true' })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${settings.mri_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.mri_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+                    {settings.mri_enabled === 'true' && (
+                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 text-blue-800 text-sm">
+                            <p className="font-bold mb-1">MRI Eligibility Rules:</p>
+                            <ul className="list-disc list-inside space-y-1">
+                                <li>Applies to Residential properties only</li>
+                                <li>Annual income must be between KES 288,000 and KES 15,000,000</li>
+                                <li>Rate: 7.5% of gross rent collected</li>
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Penalty Settings Section */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                <div className="flex items-center gap-3 mb-8">
+                    <div className="p-3 bg-red-100 rounded-xl text-red-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">Penalty Configuration</h2>
+                </div>
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div>
+                            <h3 className="font-bold text-gray-800">Enable Automatic Penalties</h3>
+                            <p className="text-sm text-gray-500">Apply after 2 consecutive months of unpaid rent</p>
+                        </div>
+                        <button
+                            onClick={() => setSettings({ ...settings, penalty_enabled: settings.penalty_enabled === 'true' ? 'false' : 'true' })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${settings.penalty_enabled === 'true' ? 'bg-red-600' : 'bg-gray-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.penalty_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+
+                    {settings.penalty_enabled === 'true' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div>
+                                <label className="block text-gray-600 text-sm font-bold mb-2 ml-1">Penalty Type</label>
+                                <select
+                                    name="penalty_type"
+                                    value={settings.penalty_type}
+                                    onChange={handleChange}
+                                    className="w-full border-2 border-gray-100 p-3 rounded-xl outline-none focus:border-red-500"
+                                >
+                                    <option value="Fixed">Fixed Amount (KES)</option>
+                                    <option value="Percentage">Percentage of Arrears (%)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-gray-600 text-sm font-bold mb-2 ml-1">
+                                    {settings.penalty_type === 'Fixed' ? 'Amount (KES)' : 'Rate (%)'}
+                                </label>
+                                <input
+                                    type="number"
+                                    name="penalty_amount"
+                                    value={settings.penalty_amount}
+                                    onChange={handleChange}
+                                    className="w-full border-2 border-gray-100 p-3 rounded-xl outline-none focus:border-red-500"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="mb-12">
+                <button onClick={handleSave} className="w-full bg-gray-900 text-white py-5 rounded-2xl font-black text-lg hover:bg-black transition-all shadow-2xl active:scale-[0.98]">
+                    SAVE ALL CONFIGURATIONS
+                </button>
             </div>
 
             {/* Security Section */}

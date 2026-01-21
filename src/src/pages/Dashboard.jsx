@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getDashboardStats } from '../services/dashboardService';
+import { getDashboardStats, getDashboardCharts } from '../services/dashboardService';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Dashboard() {
     const [stats, setStats] = useState({
@@ -10,16 +11,8 @@ export default function Dashboard() {
         totalArrears: 0,
         totalRevenue: 0
     });
-
-    // Mock data for charts - in production, fetch from API
-    const revenueData = [
-        { month: 'Aug', revenue: 45000 },
-        { month: 'Sep', revenue: 52000 },
-        { month: 'Oct', revenue: 48000 },
-        { month: 'Nov', revenue: 61000 },
-        { month: 'Dec', revenue: 55000 },
-        { month: 'Jan', revenue: stats.totalRevenue || 58000 }
-    ];
+    const [revenueData, setRevenueData] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     const occupancyData = [
         { name: 'Occupied', value: stats.occupiedUnits },
@@ -27,56 +20,79 @@ export default function Dashboard() {
     ];
 
     useEffect(() => {
-        getDashboardStats().then(data => setStats(data)).catch(console.error);
+        const loadDashboard = async () => {
+            try {
+                const [statsData, chartsData] = await Promise.all([
+                    getDashboardStats(),
+                    getDashboardCharts()
+                ]);
+                setStats(statsData);
+                setRevenueData(chartsData);
+            } catch (err) {
+                console.error('Failed to load dashboard:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadDashboard();
     }, []);
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <LoadingSpinner size="lg" text="Analyzing real estate data..." />
+            </div>
+        );
+    }
 
     return (
         <div>
             <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm">Total Tenants</h3>
-                    <p className="text-2xl font-bold">{stats.totalTenants}</p>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Tenants</h3>
+                    <p className="text-2xl font-black text-slate-900">{stats.totalTenants}</p>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm">Occupied Units</h3>
-                    <p className="text-2xl font-bold">{stats.occupiedUnits}</p>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Occupied Units</h3>
+                    <p className="text-2xl font-black text-blue-600">{stats.occupiedUnits}</p>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm">Vacant Units</h3>
-                    <p className="text-2xl font-bold">{stats.vacantUnits}</p>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Vacant Units</h3>
+                    <p className="text-2xl font-black text-rose-500">{stats.vacantUnits}</p>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm">Total Revenue</h3>
-                    <p className="text-2xl font-bold text-green-500">KES {stats.totalRevenue?.toLocaleString()}</p>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
+                    <p className="text-2xl font-black text-emerald-600">KES {stats.totalRevenue?.toLocaleString()}</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-lg shadow">
-                    <h2 className="text-lg font-semibold mb-4">Revenue Trend (Last 6 Months)</h2>
+                    <h2 className="text-lg font-bold mb-4 text-slate-800 border-b pb-2">Revenue Trend (Last 6 Months)</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <LineChart data={revenueData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" />
-                            <YAxis />
-                            <Tooltip formatter={(value) => `KES ${value.toLocaleString()}`} />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="month" axisLine={false} tickLine={false} />
+                            <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `KES ${val.toLocaleString()}`} />
+                            <Tooltip formatter={(value) => `KES ${value.toLocaleString()}`} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
                             <Legend />
-                            <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} name="Revenue" />
+                            <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} name="Actual Revenue" />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>
 
                 <div className="bg-white p-6 rounded-lg shadow">
-                    <h2 className="text-lg font-semibold mb-4">Occupancy Overview</h2>
+                    <h2 className="text-lg font-bold mb-4 text-slate-800 border-b pb-2">Occupancy Overview</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={occupancyData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                            <YAxis axisLine={false} tickLine={false} />
+                            <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
                             <Legend />
-                            <Bar dataKey="value" fill="#3b82f6" name="Units" />
+                            <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Units" />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>

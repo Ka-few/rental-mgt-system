@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 
 // --- Sub-components for Performance ---
 
-const PropertyList = React.memo(({ properties, selectedPropertyId, onSelectProperty, onAddProperty }) => {
+const PropertyList = React.memo(({ properties, selectedPropertyId, onSelectProperty, onAddProperty, onEditProperty }) => {
     return (
         <div className="w-1/2 p-4 bg-white rounded shadow text-black">
             <div className="flex justify-between items-center mb-4">
@@ -14,10 +14,21 @@ const PropertyList = React.memo(({ properties, selectedPropertyId, onSelectPrope
             <ul>
                 {properties.map(p => (
                     <li key={p.id} className={`p-4 border-b cursor-pointer hover:bg-gray-50 flex justify-between ${selectedPropertyId === p.id ? 'bg-blue-50' : ''}`} onClick={() => onSelectProperty(p)}>
-                        <div>
+                        <div className="flex-1">
                             <div className="font-bold">{p.name}</div>
                             <div className="text-sm text-gray-500">{p.address}</div>
+                            <div className="text-xs mt-1">
+                                <span className={`px-2 py-0.5 rounded-full ${p.type === 'Residential' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                    {p.type}
+                                </span>
+                            </div>
                         </div>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onEditProperty(p); }}
+                            className="text-blue-600 hover:text-blue-800 self-center"
+                        >
+                            Edit
+                        </button>
                     </li>
                 ))}
             </ul>
@@ -73,20 +84,45 @@ const UnitTable = React.memo(({ selectedProperty, units, onAddUnit, onEditUnit }
     );
 });
 
-const PropertyModal = ({ isOpen, onClose, onSuccess }) => {
+const PropertyModal = ({ isOpen, onClose, onSuccess, isEditMode, editingProperty }) => {
     const toast = useToast();
-    const [form, setForm] = useState({ name: '', address: '' });
+    const [form, setForm] = useState({
+        name: '',
+        address: '',
+        type: 'Residential',
+        annual_income_estimate: '',
+        kra_pin: ''
+    });
+
+    useEffect(() => {
+        if (isOpen) {
+            if (isEditMode && editingProperty) {
+                setForm({
+                    name: editingProperty.name,
+                    address: editingProperty.address,
+                    type: editingProperty.type || 'Residential',
+                    annual_income_estimate: editingProperty.annual_income_estimate || '',
+                    kra_pin: editingProperty.kra_pin || ''
+                });
+            } else {
+                setForm({ name: '', address: '', type: 'Residential', annual_income_estimate: '', kra_pin: '' });
+            }
+        }
+    }, [isOpen, isEditMode, editingProperty]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await createProperty(form);
+            if (isEditMode) {
+                await updateProperty(editingProperty.id, form);
+            } else {
+                await createProperty(form);
+            }
             onSuccess();
             onClose();
-            setForm({ name: '', address: '' });
-            toast.success('Property created successfully');
+            toast.success(isEditMode ? 'Property updated successfully' : 'Property created successfully');
         } catch (err) {
-            toast.error(err.message || 'Error creating property');
+            toast.error(err.message || 'Error saving property');
         }
     };
 
@@ -95,19 +131,50 @@ const PropertyModal = ({ isOpen, onClose, onSuccess }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded w-96">
-                <h3 className="text-lg font-bold mb-4">Add Property</h3>
+                <h3 className="text-lg font-bold mb-4">{isEditMode ? 'Edit Property' : 'Add Property'}</h3>
                 <form onSubmit={handleSubmit}>
-                    <input className="border w-full p-2 mb-2" placeholder="Property Name" required
-                        value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-                    <input className="border w-full p-2 mb-2" placeholder="Address" required
-                        value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
-                    <div className="flex justify-end gap-2 mt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+                    <div className="mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Property Name</label>
+                        <input className="border w-full p-2" placeholder="Property Name" required
+                            value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                    </div>
+                    <div className="mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Address</label>
+                        <input className="border w-full p-2" placeholder="Address" required
+                            value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+                    </div>
+                    <div className="mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Building Type</label>
+                        <select className="border w-full p-2" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                            <option value="Residential">Residential (MRI Eligible)</option>
+                            <option value="Commercial">Commercial (Non-MRI)</option>
+                        </select>
+                    </div>
+                    {form.type === 'Residential' && (
+                        <>
+                            <div className="mb-2">
+                                <label className="block text-sm font-medium text-gray-700">Annual Rent Estimate (KES)</label>
+                                <input type="text" className="border w-full p-2 font-mono" placeholder="e.g. 500000"
+                                    value={form.annual_income_estimate}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={e => setForm({ ...form, annual_income_estimate: e.target.value.replace(/[^0-9]/g, '') })} />
+                            </div>
+                            <div className="mb-2">
+                                <label className="block text-sm font-medium text-gray-700">KRA PIN</label>
+                                <input className="border w-full p-2 font-mono" placeholder="A00XXXXXXXX"
+                                    value={form.kra_pin} onChange={e => setForm({ ...form, kra_pin: e.target.value.toUpperCase() })} />
+                            </div>
+                        </>
+                    )}
+                    <div className="flex justify-end gap-2 mt-6">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded font-bold">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold shadow-lg">
+                            {isEditMode ? 'Update' : 'Save'}
+                        </button>
                     </div>
                 </form>
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -193,6 +260,8 @@ export default function Properties() {
 
     // Modal States
     const [isPropModalOpen, setIsPropModalOpen] = useState(false);
+    const [isEditPropMode, setIsEditPropMode] = useState(false);
+    const [editingProperty, setEditingProperty] = useState(null);
     const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
     const [isEditUnitMode, setIsEditUnitMode] = useState(false);
     const [selectedUnit, setSelectedUnit] = useState(null);
@@ -219,6 +288,18 @@ export default function Properties() {
         loadUnits(property.id);
     }, [loadUnits]);
 
+    const handleAddProperty = useCallback(() => {
+        setIsEditPropMode(false);
+        setEditingProperty(null);
+        setIsPropModalOpen(true);
+    }, []);
+
+    const handleEditProperty = useCallback((property) => {
+        setIsEditPropMode(true);
+        setEditingProperty(property);
+        setIsPropModalOpen(true);
+    }, []);
+
     const handleAddUnit = useCallback(() => {
         setIsEditUnitMode(false);
         setSelectedUnit(null);
@@ -243,7 +324,8 @@ export default function Properties() {
                 properties={properties}
                 selectedPropertyId={selectedProperty?.id}
                 onSelectProperty={handleSelectProperty}
-                onAddProperty={() => setIsPropModalOpen(true)}
+                onAddProperty={handleAddProperty}
+                onEditProperty={handleEditProperty}
             />
 
             <UnitTable
@@ -257,6 +339,8 @@ export default function Properties() {
                 isOpen={isPropModalOpen}
                 onClose={() => setIsPropModalOpen(false)}
                 onSuccess={loadProperties}
+                isEditMode={isEditPropMode}
+                editingProperty={editingProperty}
             />
 
             <UnitModal

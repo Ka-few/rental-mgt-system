@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, globalShortcut } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 
@@ -69,6 +69,18 @@ function startServer() {
 app.on('ready', () => {
   startServer();
   createWindow();
+
+  // Register F1 shortcut for help
+  globalShortcut.register('F1', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('toggle-help');
+    }
+  });
+});
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', function () {

@@ -23,6 +23,7 @@ body,
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
+
 /* Hide spin-buttons for Chrome, Safari, Edge, Opera */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
@@ -33,4 +34,78 @@ input::-webkit-inner-spin-button {
 /* Hide spin-buttons for Firefox */
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+/* Print Styles */
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Hide sidebar and header during print if they don't have print:hidden */
+  aside,
+  nav,
+  .sidebar,
+  header,
+  section.sidebar,
+  div.w-64.bg-slate-900 {
+    display: none !important;
+  }
+
+  /* Reset main content layout for printing */
+  main,
+  .flex-1,
+  div.flex-1.overflow-y-auto {
+    height: auto !important;
+    overflow: visible !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+  }
+
+  .bg-gray-100 {
+    background-color: white !important;
+  }
+
+  .shadow,
+  .rounded,
+  .rounded-2xl {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Force display of text in print even if backgrounds are missing */
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  span,
+  td,
+  th {
+    color: black !important;
+    text-shadow: none !important;
+  }
+
+  /* Custom colors for print (darker versions of the UI colors) */
+  .text-red-700 {
+    color: #b91c1c !important;
+  }
+
+  .text-green-700 {
+    color: #15803d !important;
+  }
+
+  .text-orange-700 {
+    color: #c2410c !important;
+  }
+
+  .text-purple-700 {
+    color: #7e22ce !important;
+  }
+
+  body {
+    background: white !important;
+  }
 }

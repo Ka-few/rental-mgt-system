@@ -29,3 +29,8 @@ export const updateTransaction = async (id, data) => {
     const response = await api.put(`/finance/transactions/${id}`, data);
     return response.data;
 };
+
+export const applyPenalties = async () => {
+    const response = await api.post('/finance/apply-penalties');
+    return response.data;
+};

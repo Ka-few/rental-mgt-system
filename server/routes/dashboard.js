@@ -41,4 +41,37 @@ router.get('/', (req, res) => {
     }
 });
 
+// 6-Month Revenue & Occupancy Charts
+router.get('/charts', (req, res) => {
+    try {
+        const months = [];
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date();
+            date.setMonth(date.getMonth() - i);
+            months.push({
+                label: date.toLocaleString('default', { month: 'short' }),
+                yearMonth: date.toISOString().slice(0, 7) // YYYY-MM
+            });
+        }
+
+        const chartData = months.map(m => {
+            const revenue = db.prepare(`
+                SELECT SUM(amount) as total 
+                FROM transactions 
+                WHERE type = 'Payment' AND date LIKE '${m.yearMonth}%'
+            `).get();
+
+            return {
+                month: m.label,
+                revenue: revenue.total || 0
+            };
+        });
+
+        res.json(chartData);
+    } catch (err) {
+        console.error('DASHBOARD CHARTS ERROR:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

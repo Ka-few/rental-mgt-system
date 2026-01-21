@@ -10,6 +10,11 @@ export const createProperty = async (data) => {
     return response.data;
 };
 
+export const updateProperty = async (id, data) => {
+    const response = await api.put(`/properties/${id}`, data);
+    return response.data;
+};
+
 export const getHouses = async (propertyId) => {
     const response = await api.get(`/properties/${propertyId}/houses`);
     return response.data;

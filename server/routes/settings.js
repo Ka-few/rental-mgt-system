@@ -72,13 +72,20 @@ router.get('/', (req, res) => {
 
 // Update Settings
 router.post('/', (req, res) => {
-    const { company_name, company_address, company_phone } = req.body;
+    const {
+        company_name, company_address, company_phone,
+        mri_enabled, penalty_enabled, penalty_type, penalty_amount
+    } = req.body;
     try {
         const stmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
         const transaction = db.transaction(() => {
             if (company_name !== undefined) stmt.run('company_name', company_name);
             if (company_address !== undefined) stmt.run('company_address', company_address);
             if (company_phone !== undefined) stmt.run('company_phone', company_phone);
+            if (mri_enabled !== undefined) stmt.run('mri_enabled', String(mri_enabled));
+            if (penalty_enabled !== undefined) stmt.run('penalty_enabled', String(penalty_enabled));
+            if (penalty_type !== undefined) stmt.run('penalty_type', penalty_type);
+            if (penalty_amount !== undefined) stmt.run('penalty_amount', String(penalty_amount));
         });
         transaction();
         res.json({ message: 'Settings updated successfully' });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getFinancialReport, getOccupancyReport, getArrearsReport } from '../services/reportService';
+import { getFinancialReport, getOccupancyReport, getArrearsReport, getDetailedTransactions } from '../services/reportService';
 import { exportToExcel, formatDataForExport } from '../utils/export';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
@@ -9,7 +9,14 @@ export default function Reports() {
     const [activeTab, setActiveTab] = useState('financial');
 
     // Financial State
-    const [financialData, setFinancialData] = useState({ totalRevenue: 0, totalExpenses: 0, netIncome: 0 });
+    const [financialData, setFinancialData] = useState({
+        totalRevenue: 0,
+        totalExpenses: 0,
+        mriTax: 0,
+        totalPenalties: 0,
+        netIncome: 0
+    });
+    const [financialTransactions, setFinancialTransactions] = useState([]);
     const [finFilters, setFinFilters] = useState({ startDate: '', endDate: '' });
 
     // Occupancy State
@@ -29,8 +36,12 @@ export default function Reports() {
     const loadData = async () => {
         try {
             if (activeTab === 'financial') {
-                const data = await getFinancialReport(finFilters.startDate, finFilters.endDate);
+                const [data, transactions] = await Promise.all([
+                    getFinancialReport(finFilters.startDate, finFilters.endDate),
+                    getDetailedTransactions(finFilters.startDate, finFilters.endDate)
+                ]);
                 setFinancialData(data);
+                setFinancialTransactions(transactions);
             } else if (activeTab === 'occupancy') {
                 const data = await getOccupancyReport();
                 setOccupancyData(data);
@@ -52,7 +63,7 @@ export default function Reports() {
         window.print();
     };
 
-    const handleExport = () => {
+    const handleExport = async () => {
         try {
             let data, filename, fieldMap;
 
@@ -71,13 +82,43 @@ export default function Reports() {
                     full_name: 'Tenant Name',
                     phone: 'Phone',
                     house: 'House',
-                    arrears: 'Outstanding Amount (KES)'
+                    total_penalties: 'Penalties Charged (KES)',
+                    arrears: 'Total Outstanding (KES)'
                 };
                 data = formatDataForExport(arrearsData, fieldMap);
                 filename = `Debtors_Report_${new Date().toISOString().split('T')[0]}`;
-            } else {
-                toast.warning('Financial summary export coming soon');
-                return;
+            } else if (activeTab === 'financial') {
+                toast.info('Fetching detailed transactions for export...');
+                const transactions = await getDetailedTransactions(finFilters.startDate, finFilters.endDate);
+
+                fieldMap = {
+                    date: 'Date',
+                    tenant_name: 'Tenant',
+                    property_name: 'Property',
+                    house_number: 'Unit',
+                    type: 'Type',
+                    amount: 'Amount (KES)',
+                    payment_method: 'Method',
+                    reference_code: 'Reference',
+                    description: 'Description'
+                };
+
+                const detailedData = formatDataForExport(transactions, fieldMap);
+
+                // Add summary rows at the top
+                const summaryData = [
+                    { 'Date': 'SUMMARY REPORT', 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Amount (KES)': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': 'Total Revenue', 'Amount (KES)': financialData.totalRevenue.toLocaleString(), 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': 'Total Penalties', 'Amount (KES)': financialData.totalPenalties.toLocaleString(), 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': 'Total Expenses', 'Amount (KES)': financialData.totalExpenses.toLocaleString(), 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': 'MRI Tax (7.5%)', 'Amount (KES)': `(${financialData.mriTax.toLocaleString()})`, 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': 'NET ADJUSTED INCOME', 'Amount (KES)': financialData.netIncome.toLocaleString(), 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' },
+                    { 'Date': '', 'Amount (KES)': '', 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Method': '', 'Reference': '', 'Description': '' }, // Spacer
+                    { 'Date': 'DETAILED TRANSACTIONS', 'Tenant': '', 'Property': '', 'Unit': '', 'Type': '', 'Amount (KES)': '', 'Method': '', 'Reference': '', 'Description': '' },
+                ];
+
+                data = [...summaryData, ...detailedData];
+                filename = `Financial_Report_${new Date().toISOString().split('T')[0]}`;
             }
 
             const result = exportToExcel(data, filename);
@@ -155,19 +196,105 @@ export default function Reports() {
                             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded h-10">Filter</button>
                         </form>
 
-                        <div className="grid grid-cols-3 gap-6">
-                            <div className="p-6 bg-green-50 border border-green-200 rounded">
-                                <h3 className="text-green-800 font-medium">Total Revenue</h3>
-                                <p className="text-2xl font-bold text-green-700">{Math.round(financialData.totalRevenue).toLocaleString()} KES</p>
+                        {/* Print-Only Summary List */}
+                        <div className="hidden print:block mb-8">
+                            <h3 className="text-lg font-bold mb-2 border-b-2 border-gray-800 pb-1">Financial Totals</h3>
+                            <div className="space-y-1">
+                                <div className="flex justify-between border-b border-gray-200 py-1">
+                                    <span className="font-medium">Total Revenue:</span>
+                                    <span className="font-bold">{Math.round(financialData.totalRevenue).toLocaleString()} KES</span>
+                                </div>
+                                <div className="flex justify-between border-b border-gray-200 py-1">
+                                    <span className="font-medium">Penalties Charged:</span>
+                                    <span className="font-bold">{Math.round(financialData.totalPenalties).toLocaleString()} KES</span>
+                                </div>
+                                <div className="flex justify-between border-b border-gray-200 py-1 text-red-700">
+                                    <span className="font-medium text-gray-700">Total Expenses (Maintenance):</span>
+                                    <span className="font-bold">{Math.round(financialData.totalExpenses).toLocaleString()} KES</span>
+                                </div>
+                                <div className="flex justify-between border-b border-gray-200 py-1 text-orange-700">
+                                    <span className="font-medium text-gray-700">MRI Tax (7.5%):</span>
+                                    <span className="font-bold">({Math.round(financialData.mriTax).toLocaleString()}) KES</span>
+                                </div>
+                                <div className="flex justify-between border-b-2 border-double border-gray-800 py-2 text-xl print:text-black">
+                                    <span className="font-black">NET ADJUSTED INCOME:</span>
+                                    <span className="font-black">{Math.round(financialData.netIncome).toLocaleString()} KES</span>
+                                </div>
                             </div>
-                            <div className="p-6 bg-red-50 border border-red-200 rounded">
-                                <h3 className="text-red-800 font-medium">Expenses (Maintenance)</h3>
-                                <p className="text-2xl font-bold text-red-700">{Math.round(financialData.totalExpenses).toLocaleString()} KES</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:hidden">
+                            <div className="p-6 bg-green-50 border border-green-200 rounded-2xl shadow-sm">
+                                <h3 className="text-green-800 font-bold uppercase text-xs tracking-widest mb-1">Total Revenue</h3>
+                                <p className="text-3xl font-black text-green-700">{Math.round(financialData.totalRevenue).toLocaleString()} KES</p>
+                                <p className="text-xs text-green-600 mt-2 font-medium">Total payments collected</p>
                             </div>
-                            <div className="p-6 bg-blue-50 border border-blue-200 rounded">
-                                <h3 className="text-blue-800 font-medium">Net Income</h3>
-                                <p className="text-2xl font-bold text-blue-700">{Math.round(financialData.netIncome).toLocaleString()} KES</p>
+
+                            <div className="p-6 bg-purple-50 border border-purple-200 rounded-2xl shadow-sm">
+                                <h3 className="text-purple-800 font-bold uppercase text-xs tracking-widest mb-1">Penalties Charged</h3>
+                                <p className="text-3xl font-black text-purple-700">{Math.round(financialData.totalPenalties).toLocaleString()} KES</p>
+                                <p className="text-xs text-purple-600 mt-2 font-medium">Late payment fees applied</p>
                             </div>
+
+                            <div className="p-6 bg-red-50 border border-red-200 rounded-2xl shadow-sm">
+                                <h3 className="text-red-800 font-bold uppercase text-xs tracking-widest mb-1">Expenses (Maintenance)</h3>
+                                <p className="text-3xl font-black text-red-700">{Math.round(financialData.totalExpenses).toLocaleString()} KES</p>
+                                <p className="text-xs text-red-600 mt-2 font-medium">Cost of closed requests</p>
+                            </div>
+
+                            <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl shadow-sm">
+                                <h3 className="text-orange-800 font-bold uppercase text-xs tracking-widest mb-1">MRI Tax (7.5%)</h3>
+                                <p className="text-3xl font-black text-orange-700">({Math.round(financialData.mriTax).toLocaleString()}) KES</p>
+                                <p className="text-xs text-orange-600 mt-2 font-medium">Residential Rental Income Tax</p>
+                            </div>
+
+                            <div className="p-6 bg-blue-600 border border-blue-700 rounded-2xl shadow-xl lg:col-span-2">
+                                <h3 className="text-blue-100 font-bold uppercase text-xs tracking-widest mb-1">Net Adjusted Income</h3>
+                                <p className="text-4xl font-black text-white">{Math.round(financialData.netIncome).toLocaleString()} KES</p>
+                                <p className="text-xs text-blue-200 mt-2 font-medium">Revenue - Expenses - MRI Tax</p>
+                            </div>
+                        </div>
+
+                        {/* Detailed Transactions (Excluded from PDF) */}
+                        <div className="mt-12 print:hidden">
+                            <h3 className="text-lg font-bold mb-4 border-b pb-2">Detailed Transaction Log</h3>
+                            <table className="min-w-full divide-y divide-gray-200 border text-sm">
+                                <thead className="bg-gray-50 uppercase text-xs font-bold text-gray-500">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Date</th>
+                                        <th className="px-4 py-3 text-left">Tenant / Unit</th>
+                                        <th className="px-4 py-3 text-left">Type</th>
+                                        <th className="px-4 py-3 text-right">Amount</th>
+                                        <th className="px-4 py-3 text-left">Method / Ref</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {financialTransactions.map((t, idx) => (
+                                        <tr key={idx}>
+                                            <td className="px-4 py-3 whitespace-nowrap">{new Date(t.date).toLocaleDateString()}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-gray-900">{t.tenant_name}</div>
+                                                <div className="text-xs text-gray-500">{t.property_name} - {t.house_number}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.type === 'Payment' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {t.type}
+                                                </span>
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-mono font-bold ${t.type === 'Payment' ? 'text-green-600' : 'text-red-600'}`}>
+                                                {t.type === 'Payment' ? '+' : '-'} {t.amount.toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-3 text-xs text-gray-500">
+                                                {t.payment_method || '-'}
+                                                {t.reference_code && <div className="font-mono">{t.reference_code}</div>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {financialTransactions.length === 0 && (
+                                        <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400 italic">No transactions found for the selected range.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -218,7 +345,8 @@ export default function Reports() {
                                     <th className="px-6 py-3 text-left">Tenant Name</th>
                                     <th className="px-6 py-3 text-left">Phone</th>
                                     <th className="px-6 py-3 text-left">House</th>
-                                    <th className="px-6 py-3 text-left">Outstanding Amount</th>
+                                    <th className="px-6 py-3 text-left">Penalties</th>
+                                    <th className="px-6 py-3 text-left">Total Arrears</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -227,7 +355,8 @@ export default function Reports() {
                                         <td className="px-6 py-4 font-medium">{t.full_name}</td>
                                         <td className="px-6 py-4">{t.phone}</td>
                                         <td className="px-6 py-4">{t.house}</td>
-                                        <td className="px-6 py-4 text-red-600 font-bold">{t.arrears.toLocaleString()} KES</td>
+                                        <td className="px-6 py-4 text-purple-600 font-medium">{t.total_penalties.toLocaleString()} KES</td>
+                                        <td className="px-6 py-4 text-red-600 font-bold font-mono">{t.arrears.toLocaleString()} KES</td>
                                     </tr>
                                 )) : <tr><td colSpan="4" className="px-6 py-4 text-center">No debtors found. Everyone is clear!</td></tr>}
                             </tbody>
