@@ -1,6 +1,36 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db/init');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Configure Multer Storage
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = path.join(__dirname, '../uploads/agreements');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'agreement-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only PDF or Image files are allowed!'), false);
+        }
+    }
+});
 
 // Get all tenants
 router.get('/', (req, res) => {
@@ -19,39 +49,76 @@ router.get('/', (req, res) => {
 });
 
 // Register Tenant
-router.post('/', (req, res) => {
-    const { full_name, national_id, phone, email, house_id, move_in_date } = req.body;
+router.post('/', upload.single('agreement'), (req, res) => {
+    // Note: When using multer, req.body fields are text-only. 
+    // We expect: full_name, national_id, phone, email, house_id, move_in_date
+    // Plus: initial_deposit, first_month_rent
+
+    //console.log("Req Body:", req.body);
+    //console.log("Req File:", req.file);
+
+    const { full_name, national_id, phone, email, house_id, move_in_date, initial_deposit, first_month_rent } = req.body;
+    const agreementPath = req.file ? req.file.filename : null;
 
     if (!national_id || national_id.length !== 8) {
         return res.status(400).json({ error: 'National ID must be 8 digits' });
     }
 
     const insert = db.transaction(() => {
-        // Insert Tenant
+        // 1. Insert Tenant
         const stmt = db.prepare(`
-      INSERT INTO tenants (full_name, national_id, phone, email, house_id, move_in_date, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'Active')
+      INSERT INTO tenants (full_name, national_id, phone, email, house_id, move_in_date, agreement_path, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')
     `);
-        const info = stmt.run(full_name, national_id, phone, email, house_id, move_in_date || new Date().toISOString());
+        const info = stmt.run(full_name, national_id, phone, email, house_id, move_in_date || new Date().toISOString(), agreementPath);
         const tenantId = info.lastInsertRowid;
 
-        // Update House Status to Occupied
+        // 2. Update House Status to Occupied
         if (house_id) {
             db.prepare("UPDATE houses SET status = 'Occupied' WHERE id = ?").run(house_id);
         }
+
+        // 3. Record Initial Deposit (if any)
+        if (initial_deposit && Number(initial_deposit) > 0) {
+            db.prepare(`
+                INSERT INTO transactions (tenant_id, type, amount, description, payment_method)
+                VALUES (?, 'Deposit', ?, 'Initial Rental Deposit', 'Cash/Transfer')
+            `).run(tenantId, Number(initial_deposit));
+        }
+
+        // 4. Record First Month Rent (if any)
+        if (first_month_rent && Number(first_month_rent) > 0) {
+            // This uses 'Payment' type which IS subject to MRI (Revenue)
+            // Or 'Rent Charge' if it's just the charge? User said "upload ... + monthly rent", implying payment.
+            // If we record it as 'Payment', we assume it's paid.
+            db.prepare(`
+                INSERT INTO transactions (tenant_id, type, amount, description, payment_method)
+                VALUES (?, 'Payment', ?, 'First Month Rent Payment', 'Cash/Transfer')
+            `).run(tenantId, Number(first_month_rent));
+        }
+
         return tenantId;
     });
 
     try {
         const tenantId = insert();
-        res.json({ id: tenantId, ...req.body });
+        res.json({ id: tenantId, ...req.body, agreement_path: agreementPath });
     } catch (err) {
+        if (req.file) {
+            // Cleanup uploaded file on error
+            fs.unlink(path.join(req.file.destination, req.file.filename), (e) => { if (e) console.error(e) });
+        }
         res.status(500).json({ error: err.message });
     }
 });
 
 // Update Tenant
-router.put('/:id', (req, res) => {
+router.put('/:id', upload.single('agreement'), (req, res) => {
+    // For now we don't support updating agreement via edit, or simple text updates only
+    // If we want to support editing file, we need similar multer logic here
+
+    // Because multer is used, req.body is parsed.
+
     const { full_name, national_id, phone, email, house_id, status } = req.body;
     const { id } = req.params;
 
@@ -65,8 +132,7 @@ router.put('/:id', (req, res) => {
         if (email) { updates.push('email = ?'); params.push(email); }
         if (house_id !== undefined) { updates.push('house_id = ?'); params.push(house_id); }
         if (status) { updates.push('status = ?'); params.push(status); }
-
-        if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+        if (req.file) { updates.push('agreement_path = ?'); params.push(req.file.filename); }
 
         if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 

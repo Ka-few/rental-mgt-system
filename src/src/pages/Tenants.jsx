@@ -23,6 +23,10 @@ export default function Tenants() {
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterProperty, setFilterProperty] = useState('all');
 
+
+    // View Agreement State
+    const [viewModal, setViewModal] = useState({ isOpen: false, fileUrl: null, fileType: null });
+
     const [formData, setFormData] = useState({
         full_name: '',
         national_id: '',
@@ -30,7 +34,10 @@ export default function Tenants() {
         email: '',
         move_in_date: new Date().toISOString().split('T')[0],
         property_id: '',
-        house_id: ''
+        house_id: '',
+        initial_deposit: '',
+        first_month_rent: '',
+        agreement: null
     });
 
     useEffect(() => {
@@ -77,7 +84,8 @@ export default function Tenants() {
             email: tenant.email || '',
             move_in_date: tenant.move_in_date || '',
             property_id: tenant.property_id || '',
-            house_id: tenant.house_id || ''
+            house_id: tenant.house_id || '',
+            agreement: null
         });
         setIsModalOpen(true);
     };
@@ -135,7 +143,22 @@ export default function Tenants() {
 
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+
     const currentTenants = filteredTenants.slice(indexOfFirstItem, indexOfLastItem);
+
+    const handleViewAgreement = (tenant) => {
+        if (!tenant.agreement_path) {
+            toast.info('No agreement file found for this tenant.');
+            return;
+        }
+        const fileUrl = `${window.location.protocol}//${window.location.hostname}:3000/uploads/agreements/${tenant.agreement_path}`;
+        const isPdf = tenant.agreement_path.toLowerCase().endsWith('.pdf');
+        setViewModal({
+            isOpen: true,
+            fileUrl: fileUrl,
+            fileType: isPdf ? 'pdf' : 'image'
+        });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -145,17 +168,38 @@ export default function Tenants() {
                 return;
             }
 
+            const submitData = new FormData();
+            submitData.append('full_name', formData.full_name);
+            submitData.append('national_id', formData.national_id);
+            submitData.append('phone', formData.phone);
+            submitData.append('email', formData.email);
+            submitData.append('property_id', formData.property_id);
+            submitData.append('house_id', formData.house_id);
+            submitData.append('move_in_date', formData.move_in_date);
+
+            if (formData.initial_deposit) submitData.append('initial_deposit', formData.initial_deposit);
+            if (formData.first_month_rent) submitData.append('first_month_rent', formData.first_month_rent);
+            if (formData.agreement) submitData.append('agreement', formData.agreement);
+
             if (isEditMode) {
-                await updateTenant(editingId, formData);
+                // Edit mode might not support file upload well yet in this quick refactor, keeping standard JSON for edit if no file?
+                // But backend now expects multipart if 'agreement' field is there or just handles parsing. 
+                // Multer parses body too, so FormData is safe for PUT too usually.
+                await updateTenant(editingId, submitData); // Ensure service handles FormData
                 toast.success('Tenant updated successfully');
             } else {
-                await createTenant(formData);
+                await createTenant(submitData);
                 toast.success('Tenant created successfully');
             }
 
             setIsModalOpen(false);
             loadTenants();
-            setFormData({ full_name: '', national_id: '', phone: '', email: '', move_in_date: new Date().toISOString().split('T')[0], property_id: '', house_id: '' });
+            setFormData({
+                full_name: '', national_id: '', phone: '', email: '',
+                move_in_date: new Date().toISOString().split('T')[0],
+                property_id: '', house_id: '',
+                initial_deposit: '', first_month_rent: '', agreement: null
+            });
             setIsEditMode(false);
             setEditingId(null);
             setAvailableHouses([]);
@@ -272,6 +316,15 @@ export default function Tenants() {
                                         </button>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                        {tenant.agreement_path && (
+                                            <button
+                                                onClick={() => handleViewAgreement(tenant)}
+                                                className="text-green-600 hover:text-green-900 mr-2"
+                                                title="View Agreement"
+                                            >
+                                                View Doc
+                                            </button>
+                                        )}
                                         <button onClick={() => handleEdit(tenant)} className="text-indigo-600 hover:text-indigo-900">Edit</button>
                                         <button onClick={() => handleDelete(tenant.id)} className="text-red-600 hover:text-red-900">Delete</button>
                                     </td>
@@ -292,8 +345,8 @@ export default function Tenants() {
 
             {/* Add Tenant Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-96">
+                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+                    <div className="relative mx-auto mt-10 mb-20 bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
                         <h2 className="text-xl font-bold mb-4">{isEditMode ? 'Edit Tenant' : 'Add New Tenant'}</h2>
                         <form onSubmit={handleSubmit}>
                             <div className="mb-4">
@@ -348,6 +401,40 @@ export default function Tenants() {
                             </div>
 
 
+
+
+
+
+                            <div className="mb-4">
+                                <label className="block text-gray-700 text-sm font-bold mb-2">Signed Agreement (PDF/Image)</label>
+                                {isEditMode && <p className="text-xs text-gray-500 mb-1">Upload a new file to replace the current agreement.</p>}
+                                <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    type="file" accept=".pdf,image/*"
+                                    onChange={e => setFormData({ ...formData, agreement: e.target.files[0] })}
+                                />
+                            </div>
+
+                            {!isEditMode && (
+                                <>
+                                    <div className="flex gap-4 mb-4">
+                                        <div className="w-1/2">
+                                            <label className="block text-gray-700 text-sm font-bold mb-2">Initial Deposit (KES)</label>
+                                            <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                                type="number" min="0" placeholder="e.g. 15000"
+                                                value={formData.initial_deposit} onChange={e => setFormData({ ...formData, initial_deposit: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="w-1/2">
+                                            <label className="block text-gray-700 text-sm font-bold mb-2">First Month Rent</label>
+                                            <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                                type="number" min="0" placeholder="e.g. 10000"
+                                                value={formData.first_month_rent} onChange={e => setFormData({ ...formData, first_month_rent: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
                             <div className="mb-6">
                                 <label className="block text-gray-700 text-sm font-bold mb-2">Email (Optional)</label>
                                 <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -373,6 +460,54 @@ export default function Tenants() {
                 confirmText="Delete"
                 isDangerous={true}
             />
+
+            {/* View Agreement Modal */}
+            {viewModal.isOpen && (
+                <div className="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 flex justify-center pt-10 pb-10">
+                    <div className="relative mx-auto w-full max-w-4xl bg-white rounded-lg shadow-xl flex flex-col h-[85vh]">
+                        <div className="flex justify-between items-center p-4 border-b">
+                            <h3 className="text-xl font-bold">Rental Agreement</h3>
+                            <button
+                                onClick={() => setViewModal({ ...viewModal, isOpen: false })}
+                                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 bg-gray-100 overflow-auto flex justify-center items-center">
+                            {viewModal.fileType === 'pdf' ? (
+                                <iframe
+                                    src={viewModal.fileUrl}
+                                    className="w-full h-full border-none"
+                                    title="Agreement PDF"
+                                />
+                            ) : (
+                                <img
+                                    src={viewModal.fileUrl}
+                                    alt="Agreement"
+                                    className="max-w-full max-h-full object-contain shadow-lg"
+                                />
+                            )}
+                        </div>
+                        <div className="p-4 border-t flex justify-end">
+                            <a
+                                href={viewModal.fileUrl}
+                                download
+                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                                target="_blank" rel="noreferrer"
+                            >
+                                Download / Open in New Tab
+                            </a>
+                            <button
+                                onClick={() => setViewModal({ ...viewModal, isOpen: false })}
+                                className="ml-2 bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -14,8 +14,8 @@ router.get('/financial', (req, res) => {
             params = [startDate, endDate];
         }
 
-        // Total Revenue (Payments collected)
-        const revenue = db.prepare(`SELECT SUM(amount) as total FROM transactions WHERE type = 'Payment' ${dateFilter}`).get(...params);
+        // Total Revenue (Payments collected + Deposits)
+        const revenue = db.prepare(`SELECT SUM(amount) as total FROM transactions WHERE type IN ('Payment', 'Deposit') ${dateFilter}`).get(...params);
 
         // Total Penalties Charged ('Adjustment')
         const penalties = db.prepare(`SELECT SUM(amount) as total FROM transactions WHERE type = 'Adjustment' ${dateFilter}`).get(...params);

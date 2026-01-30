@@ -10,7 +10,18 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: {
+        directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "img-src": ["'self'", "data:", "blob:", "*"],
+            "frame-ancestors": ["*"],
+            "default-src": ["*"],
+        },
+    },
+    xFrameOptions: false,
+}));
 app.use(express.json());
 
 // Initialize DB on startup
@@ -19,6 +30,9 @@ try {
 } catch (e) {
     console.error('Failed to init DB:', e);
 }
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

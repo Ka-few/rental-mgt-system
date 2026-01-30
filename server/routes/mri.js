@@ -11,6 +11,36 @@ router.get('/', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// Get transactions breakdown for a month (Validation)
+router.post('/transactions', (req, res) => {
+    const { month, year } = req.body;
+    try {
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0] + ' 23:59:59';
+
+        const transactions = db.prepare(`
+            SELECT tr.*, t.full_name, h.house_number, p.name as property_name
+            FROM transactions tr
+            JOIN tenants t ON tr.tenant_id = t.id
+            JOIN houses h ON t.house_id = h.id
+            JOIN properties p ON h.property_id = p.id
+            WHERE tr.type = 'Payment'
+            AND tr.date BETWEEN ? AND ?
+            AND p.type = 'Residential'
+            AND tr.description NOT LIKE '%Deposit%'
+            AND tr.description NOT LIKE '%Water%'
+            AND tr.description NOT LIKE '%Garbage%'
+            AND tr.description NOT LIKE '%Security%'
+            AND tr.description NOT LIKE '%Utility%'
+            AND tr.description NOT LIKE '%Penalty%'
+            ORDER BY tr.date DESC
+        `).all(startDate, endDate);
+
+        res.json(transactions);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Calculate MRI for a month
 router.post('/calculate', (req, res) => {
@@ -38,6 +68,12 @@ router.post('/calculate', (req, res) => {
             WHERE tr.type = 'Payment'
             AND tr.date BETWEEN ? AND ?
             AND p.type = 'Residential'
+            AND tr.description NOT LIKE '%Deposit%'
+            AND tr.description NOT LIKE '%Water%'
+            AND tr.description NOT LIKE '%Garbage%'
+            AND tr.description NOT LIKE '%Security%'
+            AND tr.description NOT LIKE '%Utility%'
+            AND tr.description NOT LIKE '%Penalty%'
         `).get(startDate, endDate).total || 0;
 
         // Check eligibility via annual income estimate in settings (or aggregate properties)

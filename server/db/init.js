@@ -50,6 +50,7 @@ const schema = `
     house_id INTEGER,
     status TEXT DEFAULT 'Active' CHECK(status IN ('Active', 'Vacated', 'Arrears')),
     move_in_date DATE,
+    agreement_path TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE SET NULL
   );
@@ -57,7 +58,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment')),
+    type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
     amount REAL NOT NULL,
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
@@ -232,6 +233,42 @@ function migrate() {
       db.prepare("ALTER TABLE mri_records ADD COLUMN reference_date DATE").run();
       db.prepare("UPDATE mri_records SET reference_date = date('now')").run();
     }
+
+    // Migration for tenants
+    const tenantColumns = db.prepare("PRAGMA table_info(tenants)").all();
+    const tenantColumnNames = tenantColumns.map(c => c.name);
+    if (!tenantColumnNames.includes('agreement_path')) {
+      console.log("Adding 'agreement_path' column to tenants...");
+      db.prepare("ALTER TABLE tenants ADD COLUMN agreement_path TEXT").run();
+    }
+
+    // Migration for transactions Check Constraint (allow 'Deposit')
+    const transactionsDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'").get();
+    if (transactionsDef && !transactionsDef.sql.includes("'Deposit'")) {
+      console.log("Migrating transactions table to include 'Deposit' type...");
+      // Use a transaction for safety
+      const migrateTransactions = db.transaction(() => {
+        db.prepare("ALTER TABLE transactions RENAME TO transactions_old").run();
+        db.prepare(`
+              CREATE TABLE transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
+                amount REAL NOT NULL,
+                date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                payment_method TEXT,
+                reference_code TEXT,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+              )
+            `).run();
+        db.prepare("INSERT INTO transactions SELECT * FROM transactions_old").run();
+        db.prepare("DROP TABLE transactions_old").run();
+      });
+      migrateTransactions();
+      console.log("Transactions table migrated.");
+    }
+
     console.log('Migrations checked/applied.');
   } catch (err) {
     console.error('Migration error:', err);
