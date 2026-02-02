@@ -77,7 +77,7 @@ const RecordPaymentModal = ({ isOpen, onClose, tenants, onSuccess }) => {
                         <option value="">Select Tenant</option>
                         {tenants.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
                     </select>
-                    <input type="text" className="border w-full p-2 mb-2" placeholder="Amount" required value={form.amount} onFocus={(e) => e.target.select()} onChange={e => setForm({ ...form, amount: e.target.value.replace(/[^0-9]/g, '') })} />
+                    <input type="number" className="border w-full p-2 mb-2" placeholder="Amount" required value={form.amount} onFocus={(e) => e.target.select()} onChange={e => setForm({ ...form, amount: e.target.value })} />
                     <select className="border w-full p-2 mb-2" value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}>
                         <option>M-Pesa</option>
                         <option>Cash</option>
@@ -130,7 +130,7 @@ const AddChargeModal = ({ isOpen, onClose, tenants, onSuccess }) => {
                         <option>Security</option>
                         <option>Adjustment</option>
                     </select>
-                    <input type="text" className="border w-full p-2 mb-2" placeholder="Amount" required value={form.amount} onFocus={(e) => e.target.select()} onChange={e => setForm({ ...form, amount: e.target.value.replace(/[^0-9]/g, '') })} />
+                    <input type="number" className="border w-full p-2 mb-2" placeholder="Amount" required value={form.amount} onFocus={(e) => e.target.select()} onChange={e => setForm({ ...form, amount: e.target.value })} />
                     <div className="flex justify-end gap-2 mt-4">
                         <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded">Save</button>
@@ -287,9 +287,9 @@ const HistoryModal = ({ isOpen, onClose, tenant, balances, companySettings, refr
                                 </div>
                                 <div className="mb-2">
                                     <label className="block text-sm font-medium text-gray-700">Amount</label>
-                                    <input type="text" value={editingTransaction.amount}
+                                    <input type="number" value={editingTransaction.amount}
                                         onFocus={(e) => e.target.select()}
-                                        onChange={e => setEditingTransaction({ ...editingTransaction, amount: e.target.value.replace(/[^0-9]/g, '') })}
+                                        onChange={e => setEditingTransaction({ ...editingTransaction, amount: e.target.value })}
                                         className="mt-1 block w-full p-2 border border-gray-300 rounded" required />
                                 </div>
                                 <div className="mb-2">

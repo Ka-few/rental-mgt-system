@@ -12,27 +12,34 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
     contentSecurityPolicy: {
         directives: {
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "img-src": ["'self'", "data:", "blob:", "*"],
+            "img-src": ["'self'", "data:", "blob:", "*", "http://localhost:3000", "http://127.0.0.1:3000"],
+            "frame-src": ["'self'", "http://localhost:3000", "http://127.0.0.1:3000", "blob:"],
+            "object-src": ["'self'", "http://localhost:3000", "http://127.0.0.1:3000", "blob:"],
             "frame-ancestors": ["*"],
             "default-src": ["*"],
+            "connect-src": ["*"],
         },
     },
     xFrameOptions: false,
 }));
 app.use(express.json());
 
-// Initialize DB on startup
-try {
-    initDb();
-} catch (e) {
-    console.error('Failed to init DB:', e);
-}
+const { initializeDatabase } = require('./db/init');
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadsPath = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadsPath, {
+    setHeaders: (res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
+}));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -51,14 +58,36 @@ app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', database: 'connected' });
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('GLOBAL ERROR:', err);
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
+});
+
 // Start Server
+async function start() {
+    console.log('Backend Server Starting...');
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('Port:', PORT);
+    console.log('DB Path:', process.env.DB_PATH);
+    console.log('Uploads Path:', process.env.UPLOADS_PATH);
+
+    try {
+        await initializeDatabase();
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            if (process.send) {
+                process.send('ready');
+            }
+        });
+    } catch (err) {
+        console.error('Failed to start server:', err);
+        process.exit(1);
+    }
+}
+
 if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        if (process.send) {
-            process.send('ready');
-        }
-    });
+    start();
 }
 
 module.exports = { app };

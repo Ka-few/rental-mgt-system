@@ -6,6 +6,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
 import { validateNationalId, validatePhone, validateEmail, validateRequired } from '../utils/validation';
+import api from '../services/api';
 
 export default function Tenants() {
     const toast = useToast();
@@ -151,7 +152,7 @@ export default function Tenants() {
             toast.info('No agreement file found for this tenant.');
             return;
         }
-        const fileUrl = `${window.location.protocol}//${window.location.hostname}:3000/uploads/agreements/${tenant.agreement_path}`;
+        const fileUrl = `http://127.0.0.1:3000/uploads/agreements/${tenant.agreement_path}`;
         const isPdf = tenant.agreement_path.toLowerCase().endsWith('.pdf');
         setViewModal({
             isOpen: true,
@@ -212,12 +213,28 @@ export default function Tenants() {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Tenants</h1>
-                <button
-                    onClick={openAddModal}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                    + Add Tenant
-                </button>
+                <div className="space-x-2">
+                    <button
+                        onClick={async () => {
+                            try {
+                                const response = await api.post('/help/open-uploads');
+                                toast.success('Opening agreements folder...');
+                            } catch (err) {
+                                toast.error('Error opening folder: ' + err.message);
+                            }
+                        }}
+                        className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300"
+                        title="Open the folder where documents are stored"
+                    >
+                        📁 Open Storage
+                    </button>
+                    <button
+                        onClick={openAddModal}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    >
+                        + Add Tenant
+                    </button>
+                </div>
             </div>
 
             {/* Search and Filters */}
@@ -405,14 +422,13 @@ export default function Tenants() {
 
 
 
-                            <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2">Signed Agreement (PDF/Image)</label>
-                                {isEditMode && <p className="text-xs text-gray-500 mb-1">Upload a new file to replace the current agreement.</p>}
-                                <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                                    type="file" accept=".pdf,image/*"
-                                    onChange={e => setFormData({ ...formData, agreement: e.target.files[0] })}
-                                />
-                            </div>
+                            <label className="block text-gray-700 text-sm font-bold mb-1">Signed Agreement (PDF/Image)</label>
+                            <p className="text-xs text-gray-500 mb-2">Files are automatically saved to secure system storage.</p>
+                            {isEditMode && <p className="text-xs text-blue-600 mb-1">Upload a new file to replace the current agreement.</p>}
+                            <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                type="file" accept=".pdf,image/*"
+                                onChange={e => setFormData({ ...formData, agreement: e.target.files[0] })}
+                            />
 
                             {!isEditMode && (
                                 <>
@@ -490,14 +506,18 @@ export default function Tenants() {
                             )}
                         </div>
                         <div className="p-4 border-t flex justify-end">
-                            <a
-                                href={viewModal.fileUrl}
-                                download
+                            <button
+                                onClick={() => {
+                                    if (window.electronAPI && window.electronAPI.openExternal) {
+                                        window.electronAPI.openExternal(viewModal.fileUrl);
+                                    } else {
+                                        window.open(viewModal.fileUrl, '_blank');
+                                    }
+                                }}
                                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                                target="_blank" rel="noreferrer"
                             >
-                                Download / Open in New Tab
-                            </a>
+                                Open in Browser / Download
+                            </button>
                             <button
                                 onClick={() => setViewModal({ ...viewModal, isOpen: false })}
                                 className="ml-2 bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"

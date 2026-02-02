@@ -8,7 +8,8 @@ const fs = require('fs');
 // Configure Multer Storage
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '../uploads/agreements');
+        const baseUploadDir = process.env.UPLOADS_PATH || path.join(__dirname, '../uploads');
+        const uploadDir = path.join(baseUploadDir, 'agreements');
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -44,6 +45,7 @@ router.get('/', (req, res) => {
     `).all();
         res.json(tenants);
     } catch (err) {
+        console.error('GET TENANTS ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -57,8 +59,15 @@ router.post('/', upload.single('agreement'), (req, res) => {
     //console.log("Req Body:", req.body);
     //console.log("Req File:", req.file);
 
-    const { full_name, national_id, phone, email, house_id, move_in_date, initial_deposit, first_month_rent } = req.body;
+    let { full_name, national_id, phone, email, house_id, move_in_date, initial_deposit, first_month_rent } = req.body;
     const agreementPath = req.file ? req.file.filename : null;
+
+    // Sanitize house_id (forms often send empty strings or 'null' as strings)
+    if (house_id === '' || house_id === 'null' || house_id === 'undefined') {
+        house_id = null;
+    }
+
+    console.log(`Registering tenant: ${full_name} (${national_id}), House: ${house_id}`);
 
     if (!national_id || national_id.length !== 8) {
         return res.status(400).json({ error: 'National ID must be 8 digits' });
@@ -104,6 +113,7 @@ router.post('/', upload.single('agreement'), (req, res) => {
         const tenantId = insert();
         res.json({ id: tenantId, ...req.body, agreement_path: agreementPath });
     } catch (err) {
+        console.error('REGISTER TENANT ERROR:', err);
         if (req.file) {
             // Cleanup uploaded file on error
             fs.unlink(path.join(req.file.destination, req.file.filename), (e) => { if (e) console.error(e) });
@@ -168,6 +178,7 @@ router.put('/:id', upload.single('agreement'), (req, res) => {
 
         res.json({ message: 'Tenant updated' });
     } catch (err) {
+        console.error('UPDATE TENANT ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -187,6 +198,7 @@ router.delete('/:id', (req, res) => {
 
         res.json({ message: 'Tenant deleted' });
     } catch (err) {
+        console.error('DELETE TENANT ERROR:', err);
         res.status(500).json({ error: err.message });
     }
 });

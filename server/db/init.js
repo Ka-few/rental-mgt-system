@@ -1,11 +1,184 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
-
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../rental.db');
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 console.log('SQLITE DATABASE PATH:', dbPath);
-const db = new Database(dbPath, { verbose: console.log });
+
+class DatabaseWrapper {
+  constructor(dbPath) {
+    this.db = null;
+    this.dbPath = dbPath;
+    this.transactionLevel = 0;
+  }
+
+  setWasmDb(wasmDb) {
+    this.db = wasmDb;
+  }
+
+  save() {
+    if (!this.db || this.transactionLevel > 0) return;
+    try {
+      const data = this.db.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(this.dbPath, buffer);
+    } catch (err) {
+      console.error('CRITICAL: Failed to save database to disk:', err);
+    }
+  }
+
+  prepare(sql) {
+    const self = this;
+    return {
+      run(...params) {
+        if (!self.db) throw new Error('Database not initialized');
+        try {
+          // Convert undefined to null for SQLite compatibility
+          const sanitizedParams = params.map(p => p === undefined ? null : p);
+          self.db.run(sql, sanitizedParams);
+
+          let lastInsertRowid = 0;
+          try {
+            const res = self.db.exec("SELECT last_insert_rowid()");
+            if (res && res[0] && res[0].values && res[0].values[0]) {
+              lastInsertRowid = res[0].values[0][0];
+            }
+          } catch (e) { }
+
+          self.save();
+          return {
+            changes: self.db.getRowsModified(),
+            lastInsertRowid: lastInsertRowid
+          };
+        } catch (err) {
+          console.error('DB RUN ERROR:', err.message);
+          console.error('SQL:', sql);
+          console.error('PARAMS:', params);
+          if (self.transactionLevel > 0) {
+            // Re-throw so transaction wrapper can catch and rollback
+          }
+          throw err;
+        }
+      },
+      get(...params) {
+        if (!self.db) throw new Error('Database not initialized');
+        try {
+          const sanitizedParams = params.map(p => p === undefined ? null : p);
+          const stmt = self.db.prepare(sql);
+          stmt.bind(sanitizedParams);
+          const hasResult = stmt.step();
+          const result = hasResult ? stmt.getAsObject() : undefined;
+          stmt.free();
+          return result;
+        } catch (err) {
+          console.error('DB GET ERROR:', err.message);
+          console.error('SQL:', sql);
+          console.error('PARAMS:', params);
+          throw err;
+        }
+      },
+      all(...params) {
+        if (!self.db) throw new Error('Database not initialized');
+        try {
+          const sanitizedParams = params.map(p => p === undefined ? null : p);
+          const stmt = self.db.prepare(sql);
+          stmt.bind(sanitizedParams);
+          const results = [];
+          while (stmt.step()) {
+            results.push(stmt.getAsObject());
+          }
+          stmt.free();
+          return results;
+        } catch (err) {
+          console.error('DB ALL ERROR:', err.message);
+          console.error('SQL:', sql);
+          console.error('PARAMS:', params);
+          throw err;
+        }
+      }
+    };
+  }
+
+  exec(sql) {
+    if (!this.db) throw new Error('Database not initialized');
+    try {
+      this.db.run(sql);
+      this.save();
+    } catch (err) {
+      console.error('DB EXEC ERROR:', err.message);
+      console.error('SQL:', sql);
+      throw err;
+    }
+  }
+
+  transaction(fn) {
+    return (...args) => {
+      const isNested = this.transactionLevel > 0;
+      const savepointName = `sp_${this.transactionLevel}`;
+
+      try {
+        if (isNested) {
+          this.db.run(`SAVEPOINT ${savepointName}`);
+        } else {
+          this.db.run('BEGIN TRANSACTION');
+        }
+
+        this.transactionLevel++;
+
+        const result = fn(...args);
+
+        this.transactionLevel--;
+
+        if (isNested) {
+          this.db.run(`RELEASE SAVEPOINT ${savepointName}`);
+        } else {
+          this.db.run('COMMIT');
+          this.save(); // Save only when the outermost transaction commits
+        }
+
+        return result;
+      } catch (err) {
+        this.transactionLevel--;
+        try {
+          if (isNested) {
+            this.db.run(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+          } else {
+            this.db.run('ROLLBACK');
+          }
+        } catch (rollbackErr) {
+          console.error('CRITICAL: Transaction rollback failed:', rollbackErr.message);
+        }
+        throw err;
+      }
+    };
+  }
+}
+
+const db = new DatabaseWrapper(dbPath);
+
+async function initializeDatabase() {
+  const SQL = await initSqlJs();
+  let fileBuffer;
+  if (fs.existsSync(dbPath)) {
+    fileBuffer = fs.readFileSync(dbPath);
+  }
+  const wasmDb = fileBuffer ? new SQL.Database(fileBuffer) : new SQL.Database();
+  db.setWasmDb(wasmDb);
+
+  // Run schema and seeds
+  db.exec(schema);
+  migrate();
+  seedSettings();
+  seedAdminUser();
+  seedHelpContent();
+  console.log('Database Schema Applied & Default Settings Seeded Successfully.');
+}
 
 const schema = `
   PRAGMA foreign_keys = ON;
@@ -226,8 +399,6 @@ function migrate() {
     // Migration for mri_records
     const mriColumns = db.prepare("PRAGMA table_info(mri_records)").all();
     const mriColumnNames = mriColumns.map(c => c.name);
-    // Note: reference_date is already in the main schema string now
-    // Only add if it's an old DB that hasn't been updated
     if (!mriColumnNames.includes('reference_date')) {
       console.log("Adding 'reference_date' column to mri_records...");
       db.prepare("ALTER TABLE mri_records ADD COLUMN reference_date DATE").run();
@@ -246,7 +417,6 @@ function migrate() {
     const transactionsDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'").get();
     if (transactionsDef && !transactionsDef.sql.includes("'Deposit'")) {
       console.log("Migrating transactions table to include 'Deposit' type...");
-      // Use a transaction for safety
       const migrateTransactions = db.transaction(() => {
         db.prepare("ALTER TABLE transactions RENAME TO transactions_old").run();
         db.prepare(`
@@ -262,7 +432,9 @@ function migrate() {
                 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
               )
             `).run();
-        db.prepare("INSERT INTO transactions SELECT * FROM transactions_old").run();
+        const oldData = db.prepare("SELECT * FROM transactions_old").all();
+        const insertStmt = db.prepare("INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        oldData.forEach(row => insertStmt.run(...Object.values(row)));
         db.prepare("DROP TABLE transactions_old").run();
       });
       migrateTransactions();
@@ -277,20 +449,9 @@ function migrate() {
 
 function initDb() {
   console.log('Initializing Database...');
-  try {
-    db.exec(schema);
-    migrate();
-    seedSettings();
-    seedAdminUser();
-    seedHelpContent();
-    console.log('Database Schema Applied & Default Settings Seeded Successfully.');
-  } catch (err) {
+  initializeDatabase().catch(err => {
     console.error('Error initializing database:', err);
-  }
+  });
 }
 
-if (require.main === module) {
-  initDb();
-}
-
-module.exports = { initDb, db };
+module.exports = { initDb, get db() { return db; }, initializeDatabase };

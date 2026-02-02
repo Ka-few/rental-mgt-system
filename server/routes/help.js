@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db/init');
+const path = require('path');
+const fs = require('fs');
 
 // Get all help articles (short version for list)
 router.get('/', (req, res) => {
@@ -94,6 +96,33 @@ router.get('/tours', (req, res) => {
         console.error('HELP TOURS ERROR:', err);
         res.status(500).json({ error: err.message });
     }
+});
+
+const { exec } = require('child_process');
+
+// Open Uploads Folder in Explorer
+router.post('/open-uploads', (req, res) => {
+    const uploadsPath = process.env.UPLOADS_PATH || path.join(__dirname, '../uploads');
+    const folderPath = path.join(uploadsPath, 'agreements');
+
+    if (!fs.existsSync(folderPath)) {
+        fs.mkdirSync(folderPath, { recursive: true });
+    }
+
+    let command = '';
+    switch (process.platform) {
+        case 'win32': command = `start "" "${folderPath}"`; break;
+        case 'darwin': command = `open "${folderPath}"`; break;
+        default: command = `xdg-open "${folderPath}"`; break;
+    }
+
+    exec(command, (error) => {
+        if (error) {
+            console.error('OPEN FOLDER ERROR:', error);
+            return res.status(500).json({ error: 'Could not open folder: ' + error.message });
+        }
+        res.json({ success: true, path: folderPath });
+    });
 });
 
 module.exports = router;
