@@ -51,6 +51,7 @@ export default function Reports() {
             }
         } catch (err) {
             console.error(err);
+            toast.error(err.response?.data?.message || err.message || 'Failed to load report data');
         }
     };
 
@@ -128,7 +129,7 @@ export default function Reports() {
                 toast.error('Failed to export report');
             }
         } catch (err) {
-            toast.error('Error exporting report: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Error exporting report');
         }
     };
 

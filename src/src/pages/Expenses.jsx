@@ -48,7 +48,7 @@ export default function Expenses() {
             setExpenses(expData);
             setProperties(propData);
         } catch (err) {
-            toast.error('Failed to load data: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Failed to load data');
         } finally {
             setIsLoading(false);
         }
@@ -70,7 +70,7 @@ export default function Expenses() {
             });
             loadData();
         } catch (err) {
-            toast.error('Error saving expense: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Error saving expense');
         }
     };
 
@@ -81,7 +81,7 @@ export default function Expenses() {
             setConfirmDelete({ isOpen: false, id: null });
             loadData();
         } catch (err) {
-            toast.error('Error deleting expense: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Error deleting expense');
         }
     };
 

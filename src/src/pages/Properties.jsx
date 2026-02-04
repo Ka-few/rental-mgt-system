@@ -122,7 +122,7 @@ const PropertyModal = ({ isOpen, onClose, onSuccess, isEditMode, editingProperty
             onClose();
             toast.success(isEditMode ? 'Property updated successfully' : 'Property created successfully');
         } catch (err) {
-            toast.error(err.message || 'Error saving property');
+            toast.error(err.response?.data?.message || err.message || 'Error saving property');
         }
     };
 
@@ -209,7 +209,7 @@ const UnitModal = ({ isOpen, onClose, isEditMode, editingUnit, propertyId, onSuc
             onClose();
             toast.success(isEditMode ? 'Unit updated successfully' : 'Unit created successfully');
         } catch (err) {
-            toast.error(err.message || 'Error saving unit');
+            toast.error(err.response?.data?.message || err.message || 'Error saving unit');
         }
     };
 
@@ -280,6 +280,7 @@ export default function Properties() {
             setUnits(data);
         } catch (err) {
             console.error(err);
+            toast.error(err.response?.data?.message || err.message || 'Failed to load units');
         }
     }, []);
 

@@ -64,7 +64,7 @@ const RecordPaymentModal = ({ isOpen, onClose, tenants, onSuccess }) => {
             onClose();
             toast.success('Payment recorded successfully!');
         } catch (err) {
-            toast.error(err.message || 'Failed to record payment');
+            toast.error(err.response?.data?.message || err.message || 'Failed to record payment');
         }
     };
 
@@ -110,7 +110,7 @@ const AddChargeModal = ({ isOpen, onClose, tenants, onSuccess }) => {
             onClose();
             toast.success('Charge added successfully!');
         } catch (err) {
-            toast.error(err.message || 'Failed to add charge');
+            toast.error(err.response?.data?.message || err.message || 'Failed to add charge');
         }
     };
 
@@ -486,7 +486,7 @@ export default function Finance() {
             toast.success(res.message || 'Monthly rent generated successfully!');
             loadData();
         } catch (err) {
-            toast.error(err.message || 'Failed to generate rent');
+            toast.error(err.response?.data?.message || err.message || 'Failed to generate rent');
         }
     };
 
@@ -501,7 +501,7 @@ export default function Finance() {
                 toast.info(res.message);
             }
         } catch (err) {
-            toast.error(err.message || 'Failed to apply penalties');
+            toast.error(err.response?.data?.message || err.message || 'Failed to apply penalties');
         }
     };
 

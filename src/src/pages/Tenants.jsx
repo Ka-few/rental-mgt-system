@@ -59,7 +59,10 @@ export default function Tenants() {
         setLoading(true);
         getTenants()
             .then(setTenants)
-            .catch(console.error)
+            .catch(err => {
+                console.error(err);
+                toast.error(err.response?.data?.message || err.message || 'Failed to load tenants');
+            })
             .finally(() => setLoading(false));
     };
 
@@ -110,7 +113,7 @@ export default function Tenants() {
             toast.success('Tenant deleted successfully');
             loadTenants();
         } catch (err) {
-            toast.error('Error deleting tenant: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Error deleting tenant');
         }
     };
 
@@ -121,7 +124,7 @@ export default function Tenants() {
             toast.success(`Tenant marked as ${newStatus}`);
             loadTenants();
         } catch (err) {
-            toast.error('Error updating status: ' + err.message);
+            toast.error(err.response?.data?.message || err.message || 'Error updating status');
         }
     };
 
@@ -216,7 +219,7 @@ export default function Tenants() {
             setEditingId(null);
             setAvailableHouses([]);
         } catch (err) {
-            toast.error(err.message || 'Error saving tenant');
+            toast.error(err.response?.data?.message || err.message || 'Error saving tenant');
         }
     };
 
@@ -231,7 +234,7 @@ export default function Tenants() {
                                 const response = await api.post('/help/open-uploads');
                                 toast.success('Opening agreements folder...');
                             } catch (err) {
-                                toast.error('Error opening folder: ' + err.message);
+                                toast.error(err.response?.data?.message || err.message || 'Error opening folder');
                             }
                         }}
                         className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300"
@@ -343,18 +346,32 @@ export default function Tenants() {
                                             {tenant.status}
                                         </button>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        {tenant.agreement_path && (
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <div className="flex items-center gap-3">
+                                            {tenant.agreement_path && (
+                                                <button
+                                                    onClick={() => handleViewAgreement(tenant)}
+                                                    className="text-emerald-600 hover:text-emerald-900 transition-colors p-1"
+                                                    title="View Agreement"
+                                                >
+                                                    <i className="bx bx-file-find text-xl"></i>
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => handleViewAgreement(tenant)}
-                                                className="text-green-600 hover:text-green-900 mr-2"
-                                                title="View Agreement"
+                                                onClick={() => handleEdit(tenant)}
+                                                className="text-indigo-600 hover:text-indigo-900 transition-colors p-1"
+                                                title="Edit Tenant"
                                             >
-                                                View Doc
+                                                <i className="bx bx-edit text-xl"></i>
                                             </button>
-                                        )}
-                                        <button onClick={() => handleEdit(tenant)} className="text-indigo-600 hover:text-indigo-900">Edit</button>
-                                        <button onClick={() => handleDelete(tenant.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                                            <button
+                                                onClick={() => handleDelete(tenant.id)}
+                                                className="text-rose-600 hover:text-rose-900 transition-colors p-1"
+                                                title="Delete Tenant"
+                                            >
+                                                <i className="bx bx-trash text-xl"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

@@ -27,7 +27,7 @@ export default function MRIReports() {
             setRecords(data.data);
         } catch (err) {
             console.error(err);
-            toast.error('Failed to load MRI records');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to load MRI records');
         } finally {
             setLoading(false);
         }
@@ -45,7 +45,7 @@ export default function MRIReports() {
             loadRecords();
         } catch (err) {
             console.error(err);
-            toast.error(err.response?.data?.error || 'Failed to calculate MRI');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to calculate MRI');
         } finally {
             setCalculating(false);
         }
@@ -58,7 +58,7 @@ export default function MRIReports() {
             toast.success('Record filed and locked');
             loadRecords();
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Failed to file record');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to file record');
         }
     };
 
@@ -79,7 +79,7 @@ export default function MRIReports() {
             setBreakdownModal(prev => ({ ...prev, loading: false, transactions: res.data }));
         } catch (err) {
             console.error(err);
-            toast.error('Failed to load transaction details');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to load transaction details');
             setBreakdownModal(prev => ({ ...prev, loading: false, isOpen: false }));
         }
     };
@@ -142,7 +142,7 @@ export default function MRIReports() {
             toast.success('MRI report exported successfully');
         } catch (err) {
             console.error('Export error:', err);
-            toast.error(err.message || 'Failed to export MRI report');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to export MRI report');
         }
     };
 
