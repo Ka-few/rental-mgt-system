@@ -16,6 +16,7 @@ class DatabaseWrapper {
     this.db = null;
     this.dbPath = dbPath;
     this.transactionLevel = 0;
+    this.saveTimeout = null;
   }
 
   setWasmDb(wasmDb) {
@@ -24,12 +25,34 @@ class DatabaseWrapper {
 
   save() {
     if (!this.db || this.transactionLevel > 0) return;
+
+    // Clear existing timeout if any
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+
+    // Set a new timeout to save after 1000ms of inactivity
+    this.saveTimeout = setTimeout(() => {
+      this.saveImmediately();
+    }, 1000);
+  }
+
+  saveImmediately() {
+    if (!this.db) return;
     try {
       const data = this.db.export();
       const buffer = Buffer.from(data);
-      fs.writeFileSync(this.dbPath, buffer);
+      // Async write to disk to prevent blocking the event loop
+      fs.writeFile(this.dbPath, buffer, (err) => {
+        if (err) {
+          console.error('CRITICAL: Failed to save database to disk:', err);
+        } else {
+          console.log('Database saved to disk.');
+        }
+      });
+      this.saveTimeout = null;
     } catch (err) {
-      console.error('CRITICAL: Failed to save database to disk:', err);
+      console.error('CRITICAL: Failed to export database:', err);
     }
   }
 
@@ -139,7 +162,7 @@ class DatabaseWrapper {
           this.db.run(`RELEASE SAVEPOINT ${savepointName}`);
         } else {
           this.db.run('COMMIT');
-          this.save(); // Save only when the outermost transaction commits
+          this.saveImmediately(); // Critical data: Save immediately to disk
         }
 
         return result;
@@ -240,18 +263,6 @@ const schema = `
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS maintenance_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    house_id INTEGER NOT NULL,
-    description TEXT NOT NULL,
-    priority TEXT DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
-    status TEXT DEFAULT 'Open' CHECK(status IN ('Open', 'In Progress', 'Closed')),
-    cost REAL DEFAULT 0,
-    reported_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_date DATETIME,
-    FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE
-  );
-
   CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT UNIQUE NOT NULL,
@@ -267,6 +278,18 @@ const schema = `
     net_income REAL NOT NULL,
     status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Filed', 'NIL')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    property_id INTEGER,
+    category TEXT NOT NULL CHECK(category IN ('Utilities', 'Security', 'Maintenance', 'Admin', 'Taxes', 'Other')),
+    amount REAL NOT NULL,
+    date DATE DEFAULT (date('now')),
+    description TEXT,
+    payment_method TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS help_articles (

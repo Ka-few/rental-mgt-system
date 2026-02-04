@@ -23,11 +23,10 @@ function log(message) {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}\n`;
   console.log(message);
-  try {
-    fs.appendFileSync(logPath, logMessage);
-  } catch (err) {
-    console.error('Failed to write to log file:', err);
-  }
+  // Async log to prevent blocking the main process
+  fs.appendFile(logPath, logMessage, (err) => {
+    if (err) console.error('Failed to write to log file:', err);
+  });
 }
 
 function createWindow() {

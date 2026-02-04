@@ -4,11 +4,23 @@ const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
 const { db, initDb } = require('./db/init');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// Global Rate Limiting (Security enhancement from audit)
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 1000, // Increased for local desktop app to prevent freezing upon rapid clicks
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again after 15 minutes' }
+});
+
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(limiter);
 app.use(cors());
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -46,12 +58,12 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/tenants', require('./routes/tenants'));
 app.use('/api/properties', require('./routes/properties'));
 app.use('/api/finance', require('./routes/finance'));
-app.use('/api/maintenance', require('./routes/maintenance'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/mri', require('./routes/mri'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/help', require('./routes/help'));
+app.use('/api/expenses', require('./routes/expenses'));
 
 // Basic Route
 app.get('/api/status', (req, res) => {

@@ -6,13 +6,16 @@ import { useToast } from '../context/ToastContext';
 function Login() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const { login, user } = useAuth();
     const navigate = useNavigate();
     const toast = useToast();
 
     useEffect(() => {
-        if (user) navigate('/');
+        if (user) {
+            navigate(user.role === 'admin' ? '/' : '/tenants');
+        }
     }, [user, navigate]);
 
     const handleSubmit = async (e) => {
@@ -24,9 +27,9 @@ function Login() {
 
         setIsLoading(true);
         try {
-            await login(username, password);
+            const loginResponse = await login(username, password);
             toast.success('Successfully logged in!');
-            navigate('/');
+            navigate(loginResponse.role === 'admin' ? '/' : '/tenants');
         } catch (err) {
             toast.error(err.response?.data?.message || err.message || 'Login failed');
         } finally {
@@ -59,10 +62,10 @@ function Login() {
                                 disabled={isLoading}
                             />
                         </div>
-                        <div>
+                        <div className="relative">
                             <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Password</label>
                             <input
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all"
                                 value={password}
                                 placeholder="••••••••"
@@ -70,6 +73,13 @@ function Login() {
                                 required
                                 disabled={isLoading}
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-4 top-11 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <i className={`bx ${showPassword ? 'bx-hide' : 'bx-show'} text-xl`}></i>
+                            </button>
                         </div>
                         <button
                             type="submit"

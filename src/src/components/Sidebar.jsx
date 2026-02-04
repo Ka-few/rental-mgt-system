@@ -4,21 +4,23 @@ import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.png';
 
 const navigation = [
-    { name: 'Dashboard', href: '/', icon: 'bx-grid-alt' },
+    { name: 'Dashboard', href: '/', icon: 'bx-grid-alt', adminOnly: true },
     { name: 'Tenants', href: '/tenants', icon: 'bx-user' },
-    { name: 'Properties', href: '/properties', icon: 'bx-building-house' },
+    { name: 'Properties', href: '/properties', icon: 'bx-building-house', adminOnly: true },
     { name: 'Finance', href: '/finance', icon: 'bx-money' },
-    { name: 'MRI Tax', href: '/mri', icon: 'bx-receipt' },
-    { name: 'Maintenance', href: '/maintenance', icon: 'bx-wrench' },
-    { name: 'Reports', href: '/reports', icon: 'bx-stats' },
-    { name: 'Settings', href: '/settings', icon: 'bx-cog' },
+    { name: 'Expenditures', href: '/expenses', icon: 'bx-wallet' },
+    { name: 'MRI Tax', href: '/mri', icon: 'bx-receipt', adminOnly: true },
+    { name: 'Reports', href: '/reports', icon: 'bx-stats', adminOnly: true },
+    { name: 'System Users', href: '/users', icon: 'bx-group', adminOnly: true },
+    { name: 'Settings', href: '/settings', icon: 'bx-cog', adminOnly: true },
 ];
 
 export default function Sidebar() {
     const location = useLocation();
     const navigate = useNavigate();
     const { setIsHelpDrawerOpen } = useHelp();
-    const { logout } = useAuth();
+    const { logout, user } = useAuth();
+    const userRole = user?.role || JSON.parse(localStorage.getItem('user') || '{}').role;
 
     const handleLogout = () => {
         if (window.confirm('Are you sure you want to sign out?')) {
@@ -27,9 +29,11 @@ export default function Sidebar() {
         }
     };
 
+    const filteredNavigation = navigation.filter(item => !item.adminOnly || userRole === 'admin');
+
     return (
-        <div className="flex flex-col w-64 bg-slate-900 h-screen text-white">
-            <div className="flex items-center justify-center h-36 border-b border-slate-800 shadow-xl px-4 py-6">
+        <div className="flex flex-col w-64 bg-slate-900 h-screen text-white overflow-hidden">
+            <div className="flex items-center justify-center h-36 border-b border-slate-800 shadow-xl px-4 py-6 shrink-0">
                 <div className="relative flex items-center justify-center w-28 h-28 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg rotate-3">
                     <img
                         src={logo}
@@ -38,8 +42,10 @@ export default function Sidebar() {
                     />
                 </div>
             </div>
-            <ul className="flex-col py-6 space-y-1">
-                {navigation.map((item) => {
+
+            {/* Scrollable Navigation Area */}
+            <ul className="flex-1 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+                {filteredNavigation.map((item) => {
                     const isActive = location.pathname === item.href;
                     return (
                         <li key={item.name}>
@@ -57,7 +63,8 @@ export default function Sidebar() {
                     );
                 })}
             </ul>
-            <div className="mt-auto p-4 space-y-2 border-t border-slate-800">
+
+            <div className="mt-auto p-4 space-y-2 border-t border-slate-800 shrink-0">
                 <button
                     onClick={() => setIsHelpDrawerOpen(true)}
                     className="flex flex-row items-center h-12 w-full text-gray-400 hover:text-white hover:bg-slate-800/50 rounded-lg px-2 transition-all group"

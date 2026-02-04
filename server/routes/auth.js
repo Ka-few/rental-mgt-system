@@ -104,4 +104,123 @@ router.post('/change-password', (req, res) => {
     });
 });
 
+// --- User Management (Admin Only) ---
+
+// Get all users
+router.get('/users', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err || decoded.role !== 'admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+
+        try {
+            const users = db.prepare('SELECT id, username, role, created_at FROM users').all();
+            res.json(users);
+        } catch (err) {
+            res.status(500).json({ message: err.message });
+        }
+    });
+});
+
+// Create new user
+router.post('/register', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err || decoded.role !== 'admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+
+        const { username, password, role } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ message: 'Username and password are required' });
+        }
+
+        try {
+            const hash = bcrypt.hashSync(password, 10);
+            db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run(username, hash, role || 'staff');
+            res.json({ message: 'User created successfully' });
+        } catch (err) {
+            if (err.message.includes('UNIQUE')) {
+                return res.status(400).json({ message: 'Username already exists' });
+            }
+            res.status(500).json({ message: err.message });
+        }
+    });
+});
+
+// Update user (Admin only)
+router.put('/users/:id', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err || decoded.role !== 'admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+
+        const targetId = parseInt(req.params.id);
+        const { username, role, currentPassword, newPassword } = req.body;
+
+        try {
+            // If updating password
+            if (newPassword) {
+                // If the admin is updating THEMSELVES, require current password
+                if (targetId === decoded.id) {
+                    const self = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(targetId);
+                    if (!currentPassword || !bcrypt.compareSync(currentPassword, self.password_hash)) {
+                        return res.status(400).json({ message: 'Incorrect current password' });
+                    }
+                }
+                const newHash = bcrypt.hashSync(newPassword, 10);
+                db.prepare('UPDATE users SET username = ?, role = ?, password_hash = ? WHERE id = ?').run(username, role, newHash, targetId);
+            } else {
+                db.prepare('UPDATE users SET username = ?, role = ? WHERE id = ?').run(username, role, targetId);
+            }
+
+            res.json({ message: 'User updated successfully' });
+        } catch (err) {
+            if (err.message.includes('UNIQUE')) {
+                return res.status(400).json({ message: 'Username already exists' });
+            }
+            res.status(500).json({ message: err.message });
+        }
+    });
+});
+
+// Delete user
+router.delete('/users/:id', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err || decoded.role !== 'admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+
+        if (parseInt(req.params.id) === decoded.id) {
+            return res.status(400).json({ message: 'You cannot delete your own account' });
+        }
+
+        try {
+            db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+            res.json({ message: 'User deleted successfully' });
+        } catch (err) {
+            res.status(500).json({ message: err.message });
+        }
+    });
+});
+
 module.exports = router;

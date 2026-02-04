@@ -4,6 +4,35 @@ import { API_URL } from '../config';
 import api from '../services/api';
 import { changePassword } from '../services/authService';
 
+const LocalInput = ({ label, name, value, onChange, placeholder, type = "text", className = "", focusClass = "focus:border-emerald-500" }) => {
+    const [localValue, setLocalValue] = useState(value || '');
+
+    useEffect(() => {
+        setLocalValue(value || '');
+    }, [value]);
+
+    const handleBlur = () => {
+        if (localValue !== value) {
+            onChange({ target: { name, value: localValue } });
+        }
+    };
+
+    return (
+        <div className={className}>
+            <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">{label}</label>
+            <input
+                type={type}
+                name={name}
+                value={localValue}
+                onChange={(e) => setLocalValue(e.target.value)}
+                onBlur={handleBlur}
+                placeholder={placeholder}
+                className={`w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl ${focusClass} focus:bg-white transition-all outline-none text-gray-800 font-medium placeholder-gray-300`}
+            />
+        </div>
+    );
+};
+
 const Settings = () => {
     const toast = useToast();
     const [settings, setSettings] = useState({
@@ -20,9 +49,11 @@ const Settings = () => {
     const [pwdForm, setPwdForm] = useState({
         currentPassword: '',
         newPassword: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        showCurrent: false,
+        showNew: false,
+        showConfirm: false
     });
-    const [showPasswords, setShowPasswords] = useState(false);
 
     useEffect(() => {
         api.get('/settings')
@@ -39,7 +70,7 @@ const Settings = () => {
     };
 
     const handleSave = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
         try {
             await api.post('/settings', {
                 company_name: settings.company_name,
@@ -123,36 +154,28 @@ const Settings = () => {
                     <h2 className="text-2xl font-bold text-gray-800">Company Profile</h2>
                 </div>
                 <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="md:col-span-2">
-                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Company Name</label>
-                        <input
-                            name="company_name"
-                            value={settings.company_name || ''}
-                            onChange={handleChange}
-                            placeholder="e.g. Royal Apartments Ltd"
-                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium placeholder-gray-300"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Address</label>
-                        <input
-                            name="company_address"
-                            value={settings.company_address || ''}
-                            onChange={handleChange}
-                            placeholder="e.g. 123 Business Way, Nairobi"
-                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-gray-600 text-sm font-bold mb-2 ml-1 uppercase tracking-tight">Support Phone</label>
-                        <input
-                            name="company_phone"
-                            value={settings.company_phone || ''}
-                            onChange={handleChange}
-                            placeholder="e.g. +254 700 000 000"
-                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-emerald-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
-                        />
-                    </div>
+                    <LocalInput
+                        className="md:col-span-2"
+                        label="Company Name"
+                        name="company_name"
+                        value={settings.company_name}
+                        onChange={handleChange}
+                        placeholder="e.g. Royal Apartments Ltd"
+                    />
+                    <LocalInput
+                        label="Address"
+                        name="company_address"
+                        value={settings.company_address}
+                        onChange={handleChange}
+                        placeholder="e.g. 123 Business Way, Nairobi"
+                    />
+                    <LocalInput
+                        label="Support Phone"
+                        name="company_phone"
+                        value={settings.company_phone}
+                        onChange={handleChange}
+                        placeholder="e.g. +254 700 000 000"
+                    />
                     <div className="md:col-span-2">
                         <button type="submit" className="bg-emerald-600 text-white px-10 py-4 rounded-xl font-black hover:bg-emerald-700 transition-all shadow-xl hover:shadow-emerald-200 active:scale-95">
                             SAVE COMPANY PROFILE
@@ -235,18 +258,14 @@ const Settings = () => {
                                     <option value="Percentage">Percentage of Arrears (%)</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-gray-600 text-sm font-bold mb-2 ml-1">
-                                    {settings.penalty_type === 'Fixed' ? 'Amount (KES)' : 'Rate (%)'}
-                                </label>
-                                <input
-                                    type="number"
-                                    name="penalty_amount"
-                                    value={settings.penalty_amount}
-                                    onChange={handleChange}
-                                    className="w-full border-2 border-gray-100 p-3 rounded-xl outline-none focus:border-red-500"
-                                />
-                            </div>
+                            <LocalInput
+                                type="number"
+                                name="penalty_amount"
+                                label={settings.penalty_type === 'Fixed' ? 'Amount (KES)' : 'Rate (%)'}
+                                value={settings.penalty_amount}
+                                onChange={handleChange}
+                                focusClass="focus:border-red-500"
+                            />
                         </div>
                     )}
                 </div>
@@ -269,52 +288,63 @@ const Settings = () => {
                         </div>
                         <h2 className="text-2xl font-bold text-gray-800">Security</h2>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setShowPasswords(!showPasswords)}
-                        className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all border-2 ${showPasswords ? 'bg-amber-600 border-amber-600 text-white' : 'border-gray-200 text-gray-500 hover:border-amber-600 hover:text-amber-600'}`}
-                    >
-                        {showPasswords ? 'Hide Passwords' : 'View Passwords'}
-                    </button>
                 </div>
 
                 <form onSubmit={onUpdatePassword} className="space-y-6">
-                    <div className="max-w-md">
-                        <label className="block text-red-500 text-xs font-black mb-2 ml-1 uppercase tracking-widest">Type Current Password</label>
-                        <input
-                            type={showPasswords ? "text" : "password"}
+                    <div className="max-w-md relative">
+                        <LocalInput
+                            type={pwdForm.showCurrent ? "text" : "password"}
                             name="currentPassword"
+                            label="Current Password"
                             value={pwdForm.currentPassword}
                             onChange={handlePwdChange}
                             placeholder="••••••••"
-                            className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
-                            required
+                            focusClass="focus:border-amber-500"
                         />
+                        <button
+                            type="button"
+                            onClick={() => setPwdForm({ ...pwdForm, showCurrent: !pwdForm.showCurrent })}
+                            className="absolute right-4 top-11 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <i className={`bx ${pwdForm.showCurrent ? 'bx-hide' : 'bx-show'} text-xl`}></i>
+                        </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-gray-600 text-xs font-black mb-2 ml-1 uppercase tracking-widest">New Password</label>
-                            <input
-                                type={showPasswords ? "text" : "password"}
+                        <div className="relative">
+                            <LocalInput
+                                type={pwdForm.showNew ? "text" : "password"}
                                 name="newPassword"
+                                label="New Password"
                                 value={pwdForm.newPassword}
                                 onChange={handlePwdChange}
                                 placeholder="Min. 6 chars"
-                                className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
-                                required
+                                focusClass="focus:border-amber-500"
                             />
+                            <button
+                                type="button"
+                                onClick={() => setPwdForm({ ...pwdForm, showNew: !pwdForm.showNew })}
+                                className="absolute right-4 top-11 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <i className={`bx ${pwdForm.showNew ? 'bx-hide' : 'bx-show'} text-xl`}></i>
+                            </button>
                         </div>
-                        <div>
-                            <label className="block text-gray-600 text-xs font-black mb-2 ml-1 uppercase tracking-widest">Confirm New</label>
-                            <input
-                                type={showPasswords ? "text" : "password"}
+                        <div className="relative">
+                            <LocalInput
+                                type={pwdForm.showConfirm ? "text" : "password"}
                                 name="confirmPassword"
+                                label="Confirm New"
                                 value={pwdForm.confirmPassword}
                                 onChange={handlePwdChange}
                                 placeholder="••••••••"
-                                className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-xl focus:border-amber-500 focus:bg-white transition-all outline-none text-gray-800 font-medium"
-                                required
+                                focusClass="focus:border-amber-500"
                             />
+                            <button
+                                type="button"
+                                onClick={() => setPwdForm({ ...pwdForm, showConfirm: !pwdForm.showConfirm })}
+                                className="absolute right-4 top-11 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <i className={`bx ${pwdForm.showConfirm ? 'bx-hide' : 'bx-show'} text-xl`}></i>
+                            </button>
                         </div>
                     </div>
                     <button type="submit" className="bg-amber-600 text-white px-10 py-4 rounded-xl font-black hover:bg-amber-700 transition-all shadow-xl hover:shadow-amber-200 active:scale-95">

@@ -29,17 +29,19 @@ router.get('/financial', (req, res) => {
         }
         const mriTax = db.prepare(`SELECT SUM(tax_payable) as total FROM mri_records WHERE status != 'NIL' ${mriDateFilter}`).get(...mriParams);
 
-        // Total Expenses (Maintenance)
-        let maintDateFilter = "";
-        let maintParams = [];
+        // Total Expenses (Consolidated Expenses)
+        let genDateFilter = "";
+        let genParams = [];
+
         if (startDate && endDate) {
-            maintDateFilter = "AND completed_date BETWEEN ? AND ?";
-            maintParams = [startDate, endDate];
+            genDateFilter = "AND date BETWEEN ? AND ?";
+            genParams = [startDate, endDate];
         }
-        const expenses = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Closed' ${maintDateFilter}`).get(...maintParams);
+
+        const generalExpenses = db.prepare(`SELECT SUM(amount) as total FROM expenses WHERE 1=1 ${genDateFilter}`).get(...genParams);
 
         const totalRevenue = revenue.total || 0;
-        const totalExpenses = expenses.total || 0;
+        const totalExpenses = generalExpenses.total || 0;
         const totalTax = mriTax.total || 0;
         const totalPenalties = penalties.total || 0;
 

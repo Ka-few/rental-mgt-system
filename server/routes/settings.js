@@ -23,13 +23,13 @@ router.post('/clear', (req, res) => {
             'tenants',
             'houses',
             'properties',
-            'maintenance_requests'
+            'expenses'
         ];
 
         const transaction = db.transaction(() => {
             // Delete data in order
             db.prepare('DELETE FROM transactions').run();
-            db.prepare('DELETE FROM maintenance_requests').run();
+            db.prepare('DELETE FROM expenses').run();
             db.prepare('DELETE FROM tenants').run();
             db.prepare('DELETE FROM houses').run();
             db.prepare('DELETE FROM properties').run();
@@ -45,7 +45,7 @@ router.post('/clear', (req, res) => {
             defaultSettings.forEach(s => seedStmt.run(s.key, s.value));
 
             // Reset autoincrement
-            db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'tenants', 'houses', 'properties', 'maintenance_requests', 'settings')").run();
+            db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'tenants', 'houses', 'properties', 'expenses', 'settings')").run();
         });
 
         transaction();

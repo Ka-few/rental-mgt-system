@@ -21,8 +21,17 @@ export default function Tenants() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterProperty, setFilterProperty] = useState('all');
+
+    // Debounce search term
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
 
 
     // View Agreement State
@@ -134,9 +143,10 @@ export default function Tenants() {
 
     // Pagination logic with search and filters
     const filteredTenants = tenants.filter(tenant => {
-        const matchesSearch = tenant.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            tenant.national_id.includes(searchTerm) ||
-            tenant.phone.includes(searchTerm);
+        const lowerSearch = debouncedSearchTerm.toLowerCase();
+        const matchesSearch = tenant.full_name.toLowerCase().includes(lowerSearch) ||
+            tenant.national_id.includes(debouncedSearchTerm) ||
+            tenant.phone.includes(debouncedSearchTerm);
         const matchesStatus = filterStatus === 'all' || tenant.status === filterStatus;
         const matchesProperty = filterProperty === 'all' || tenant.property_id?.toString() === filterProperty;
         return matchesSearch && matchesStatus && matchesProperty;
@@ -164,8 +174,9 @@ export default function Tenants() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (formData.national_id.length !== 8) {
-                toast.error('National ID must be 8 digits');
+            const sanitizedId = formData.national_id.trim();
+            if (!/^\d+$/.test(sanitizedId) || sanitizedId.length !== 8) {
+                toast.error('National ID must be exactly 8 digits');
                 return;
             }
 

@@ -5,10 +5,11 @@ import Dashboard from './pages/Dashboard';
 import Tenants from './pages/Tenants';
 import Properties from './pages/Properties';
 import Finance from './pages/Finance';
-import Maintenance from './pages/Maintenance';
 import Reports from './pages/Reports';
 import MRIReports from './pages/MRIReports';
 import Settings from './pages/Settings';
+import Expenses from './pages/Expenses';
+import Users from './pages/Users';
 
 import Login from './pages/Login';
 import { AuthProvider } from './context/AuthContext';
@@ -34,14 +35,18 @@ function App() {
 
               <Route element={<PrivateRoute />}>
                 <Route path="/" element={<MainLayout />}>
-                  <Route index element={<Dashboard />} />
+                  <Route element={<PrivateRoute adminOnly={true} />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="properties" element={<Properties />} />
+                    <Route path="mri" element={<MRIReports />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="users" element={<Users />} />
+                  </Route>
+
                   <Route path="tenants" element={<Tenants />} />
-                  <Route path="properties" element={<Properties />} />
                   <Route path="finance" element={<Finance />} />
-                  <Route path="maintenance" element={<Maintenance />} />
-                  <Route path="reports" element={<Reports />} />
-                  <Route path="mri" element={<MRIReports />} />
-                  <Route path="settings" element={<Settings />} />
+                  <Route path="expenses" element={<Expenses />} />
                 </Route>
               </Route>
             </Routes>

@@ -185,12 +185,24 @@ router.put('/:id', upload.single('agreement'), (req, res) => {
 
 // Delete Tenant
 router.delete('/:id', (req, res) => {
+    const { id } = req.params;
+    console.log(`DELETE REQUEST: Attempting to delete tenant with ID: ${id}`);
     try {
-        const tenant = db.prepare('SELECT house_id FROM tenants WHERE id = ?').get(req.params.id);
-        const stmt = db.prepare('DELETE FROM tenants WHERE id = ?');
-        const info = stmt.run(req.params.id);
+        const tenant = db.prepare('SELECT id, full_name, house_id FROM tenants WHERE id = ?').get(id);
 
-        if (info.changes === 0) return res.status(404).json({ error: 'Tenant not found' });
+        if (!tenant) {
+            console.error(`DELETE ERROR: Tenant with ID ${id} not found in database.`);
+            return res.status(404).json({ error: 'Tenant not found' });
+        }
+
+        console.log(`DELETE: Found tenant ${tenant.full_name}. Proceeding with deletion...`);
+        const stmt = db.prepare('DELETE FROM tenants WHERE id = ?');
+        const info = stmt.run(id);
+
+        if (info.changes === 0) {
+            console.error(`DELETE ERROR: No changes made when deleting ID ${id}`);
+            return res.status(404).json({ error: 'Tenant not found' });
+        }
 
         if (tenant && tenant.house_id) {
             db.prepare("UPDATE houses SET status = 'Vacant' WHERE id = ?").run(tenant.house_id);

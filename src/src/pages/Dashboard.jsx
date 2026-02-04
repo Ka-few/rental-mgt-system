@@ -9,32 +9,37 @@ export default function Dashboard() {
         occupiedUnits: 0,
         vacantUnits: 0,
         totalArrears: 0,
-        totalRevenue: 0
+        totalRevenue: 0,
+        totalExpenses: 0
     });
     const [revenueData, setRevenueData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const occupancyData = [
         { name: 'Occupied', value: stats.occupiedUnits },
         { name: 'Vacant', value: stats.vacantUnits }
     ];
 
-    useEffect(() => {
-        const loadDashboard = async () => {
-            try {
-                const [statsData, chartsData] = await Promise.all([
-                    getDashboardStats(),
-                    getDashboardCharts()
-                ]);
-                setStats(statsData);
-                setRevenueData(chartsData);
-            } catch (err) {
-                console.error('Failed to load dashboard:', err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
+    const loadDashboard = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const [statsData, chartsData] = await Promise.all([
+                getDashboardStats(),
+                getDashboardCharts()
+            ]);
+            setStats(statsData);
+            setRevenueData(chartsData);
+        } catch (err) {
+            console.error('Failed to load dashboard:', err);
+            setError('Could not connect to the server. Please check your connection and try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
+    useEffect(() => {
         loadDashboard();
     }, []);
 
@@ -46,25 +51,47 @@ export default function Dashboard() {
         );
     }
 
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-6 bg-rose-50 rounded-2xl border border-rose-100">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-rose-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h2 className="text-xl font-bold text-rose-900 mb-2">Data Load Failed</h2>
+                <p className="text-rose-600 mb-6 max-w-sm">{error}</p>
+                <button
+                    onClick={loadDashboard}
+                    className="bg-rose-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200"
+                >
+                    Retry Connection
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div>
             <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Tenants</h3>
-                    <p className="text-2xl font-black text-slate-900">{stats.totalTenants}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-blue-500 transition-colors">Total Tenants</h3>
+                    <p className="text-3xl font-black text-slate-800">{stats.totalTenants}</p>
                 </div>
-                <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Occupied Units</h3>
-                    <p className="text-2xl font-black text-blue-600">{stats.occupiedUnits}</p>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-amber-500 transition-colors">Occupancy</h3>
+                    <p className="text-3xl font-black text-slate-800">
+                        <span className="text-blue-600">{stats.occupiedUnits}</span>
+                        <span className="text-gray-200 mx-2">/</span>
+                        <span className="text-gray-400 text-xl">{stats.occupiedUnits + stats.vacantUnits}</span>
+                    </p>
                 </div>
-                <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Vacant Units</h3>
-                    <p className="text-2xl font-black text-rose-500">{stats.vacantUnits}</p>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-emerald-500 transition-colors">Total Revenue</h3>
+                    <p className="text-3xl font-black text-emerald-600">KES {stats.totalRevenue?.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
-                    <p className="text-2xl font-black text-emerald-600">KES {stats.totalRevenue?.toLocaleString()}</p>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-rose-500 transition-colors">Total Expenses</h3>
+                    <p className="text-3xl font-black text-rose-500">KES {stats.totalExpenses?.toLocaleString()}</p>
                 </div>
             </div>
 

@@ -208,6 +208,114 @@ const HistoryModal = ({ isOpen, onClose, tenant, balances, companySettings, refr
         printWindow.document.close();
     };
 
+    const handleExportStatement = () => {
+        const tenantSafeName = tenant.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const reportTitle = `Statement_${tenantSafeName}_${new Date().toISOString().split('T')[0]}`;
+        const currentBalance = balances.find(b => b.tenant_id === tenant.tenant_id)?.balance || 0;
+
+        const printWindow = window.open('', '', 'width=800,height=900');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>${reportTitle}</title>
+                <style>
+                    body { font-family: 'Inter', sans-serif; padding: 40px; color: #333; }
+                    .header { display: flex; justify-content: space-between; border-bottom: 4px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; }
+                    .company-info h1 { margin: 0; color: #1e293b; text-transform: uppercase; letter-spacing: 1px; }
+                    .company-info p { margin: 2px 0; color: #64748b; font-size: 0.9em; }
+                    .statement-title { text-align: right; }
+                    .statement-title h2 { margin: 0; color: #3b82f6; font-size: 2em; }
+                    .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+                    .detail-box h3 { font-size: 0.8em; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #f1f5f9; }
+                    .detail-box p { font-weight: bold; margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+                    th { text-align: left; padding: 12px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; font-size: 0.85em; color: #64748b; text-transform: uppercase; }
+                    td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9em; }
+                    .type-Payment { color: #10b981; font-weight: 600; }
+                    .type-Charge { color: #ef4444; font-weight: 600; }
+                    .amount-column { text-align: right; font-family: monospace; font-weight: bold; font-size: 1.1em; }
+                    .summary { background: #1e293b; color: white; padding: 25px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+                    .summary-label { font-size: 0.9em; opacity: 0.8; }
+                    .summary-value { font-size: 1.8em; font-weight: 800; }
+                    .footer { margin-top: 50px; text-align: center; font-size: 0.8em; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 20px; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="company-info">
+                        <h1>${companySettings.company_name || 'REAL ESTATE MANAGEMENT'}</h1>
+                        <p>${companySettings.company_address || ''}</p>
+                        <p>Phone: ${companySettings.company_phone || ''}</p>
+                        <p>Email: ${companySettings.company_email || ''}</p>
+                    </div>
+                    <div class="statement-title">
+                        <h2>ACCOUNT STATEMENT</h2>
+                        <p>Generated on: ${new Date().toLocaleDateString()}</p>
+                    </div>
+                </div>
+
+                <div class="details-grid">
+                    <div class="detail-box">
+                        <h3>Statement For</h3>
+                        <p>${tenant.full_name}</p>
+                        <p style="font-weight: normal; color: #64748b;">${tenant.phone || ''}</p>
+                    </div>
+                    <div class="detail-box">
+                        <h3>Property Details</h3>
+                        <p>${balances.find(b => b.tenant_id === tenant.tenant_id)?.property_name || 'N/A'}</p>
+                        <p style="font-weight: normal; color: #64748b;">Unit: ${balances.find(b => b.tenant_id === tenant.tenant_id)?.house_number || 'N/A'}</p>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th style="text-align: right;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.map(t => `
+                            <tr>
+                                <td>${new Date(t.date).toLocaleDateString()}</td>
+                                <td class="type-${t.type}">${t.type}</td>
+                                <td>${t.description || '-'} ${t.payment_method ? `(via ${t.payment_method})` : ''}</td>
+                                <td class="amount-column ${t.type === 'Payment' ? 'type-Payment' : 'type-Charge'}">
+                                    ${t.type === 'Payment' ? '' : '-'}${t.amount.toLocaleString()}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <div class="summary">
+                    <div>
+                        <span class="summary-label">Current Account Standing</span>
+                    </div>
+                    <div>
+                        <span class="summary-value">${currentBalance.toLocaleString()} KES</span>
+                        <div style="font-size: 0.7em; text-align: right; opacity: 0.6;">
+                            ${currentBalance < 0 ? 'TOTAL ARREARS' : 'ACCOUNT CREDIT'}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <p>This is a computer-generated account statement. For any queries, please contact our management office.</p>
+                </div>
+
+                <script>
+                    window.onload = function() { window.print(); window.close(); }
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
+
     const handleEditSave = async (e) => {
         e.preventDefault();
         try {
@@ -226,7 +334,15 @@ const HistoryModal = ({ isOpen, onClose, tenant, balances, companySettings, refr
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded w-3/4 max-h-[80vh] overflow-hidden flex flex-col">
                 <div className="flex justify-between items-center mb-4 p-4 border-b">
-                    <h3 className="text-lg font-bold">Transaction History: {tenant.full_name}</h3>
+                    <div className="flex items-center gap-4">
+                        <h3 className="text-lg font-bold">Transaction History: {tenant.full_name}</h3>
+                        <button
+                            onClick={handleExportStatement}
+                            className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-sm"
+                        >
+                            <i className="bx bx-printer"></i> Export Statement
+                        </button>
+                    </div>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
                 </div>
 

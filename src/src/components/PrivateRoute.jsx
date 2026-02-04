@@ -1,10 +1,16 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const PrivateRoute = () => {
+const PrivateRoute = ({ adminOnly }) => {
     const { user } = useAuth();
 
-    return user ? <Outlet /> : <Navigate to="/login" replace />;
+    if (!user) return <Navigate to="/login" replace />;
+
+    if (adminOnly && user.role !== 'admin') {
+        return <Navigate to="/tenants" replace />;
+    }
+
+    return <Outlet />;
 };
 
 export default PrivateRoute;

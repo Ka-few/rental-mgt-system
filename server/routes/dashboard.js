@@ -29,12 +29,17 @@ router.get('/', (req, res) => {
             ) WHERE balance < 0
         `).get();
 
+        // 6. Total Expenses (Consolidated)
+        const genExp = db.prepare("SELECT SUM(amount) as total FROM expenses").get();
+        const totalExp = genExp.total || 0;
+
         res.json({
             totalTenants: tenants.count,
             occupiedUnits: occupiedCount,
             vacantUnits: vacantCount,
             totalArrears: arrearsData.totalArrears || 0,
-            totalRevenue: revenue.total || 0
+            totalRevenue: revenue.total || 0,
+            totalExpenses: totalExp
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
