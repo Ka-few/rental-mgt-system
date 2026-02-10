@@ -215,7 +215,7 @@ export default function Expenses() {
                                 <select
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                     value={form.property_id}
-                                    onChange={(e) => setForm({ ...form, property_id: e.target.value })}
+                                    onChange={(e) => setForm(prev => ({ ...prev, property_id: e.target.value }))}
                                 >
                                     <option value="">General/Office Expense</option>
                                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -228,7 +228,7 @@ export default function Expenses() {
                                         className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                         required
                                         value={form.category}
-                                        onChange={(e) => setForm({ ...form, category: e.target.value })}
+                                        onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
                                     >
                                         <option>Utilities</option>
                                         <option>Security</option>
@@ -244,8 +244,10 @@ export default function Expenses() {
                                         type="number"
                                         className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                         required
+                                        min="0"
+                                        step="0.01"
                                         value={form.amount}
-                                        onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                                        onChange={(e) => setForm(prev => ({ ...prev, amount: e.target.value }))}
                                     />
                                 </div>
                             </div>
@@ -256,7 +258,7 @@ export default function Expenses() {
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                     placeholder="e.g. Electricity token for common areas"
                                     value={form.description}
-                                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                                    onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
                                 />
                             </div>
                             <div>
@@ -266,7 +268,7 @@ export default function Expenses() {
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                     required
                                     value={form.date}
-                                    onChange={(e) => setForm({ ...form, date: e.target.value })}
+                                    onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
                                 />
                             </div>
                             <div className="flex gap-3 pt-4">

@@ -171,7 +171,7 @@ export default function Users() {
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                         </svg>
                                     </button>
-                                    {user.id !== currentUser.id && (
+                                    {user.id !== currentUser.id && user.role !== 'admin' && (
                                         <button
                                             onClick={() => setConfirmDelete({ isOpen: true, id: user.id })}
                                             className="text-gray-300 hover:text-red-500 transition-colors"
@@ -207,7 +207,7 @@ export default function Users() {
                                     required
                                     placeholder="Enter login username"
                                     value={form.username}
-                                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                                    onChange={(e) => setForm(prev => ({ ...prev, username: e.target.value }))}
                                 />
                             </div>
 
@@ -217,7 +217,7 @@ export default function Users() {
                                 <select
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-indigo-500"
                                     value={form.role}
-                                    onChange={(e) => setForm({ ...form, role: e.target.value })}
+                                    onChange={(e) => setForm(prev => ({ ...prev, role: e.target.value }))}
                                 >
                                     <option value="staff">Staff (Standard Access)</option>
                                     <option value="admin">Administrator (Full Access)</option>
@@ -238,7 +238,7 @@ export default function Users() {
                                             className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-amber-500"
                                             placeholder="Verify current password"
                                             value={form.currentPassword}
-                                            onChange={(e) => setForm({ ...form, currentPassword: e.target.value })}
+                                            onChange={(e) => setForm(prev => ({ ...prev, currentPassword: e.target.value }))}
                                             required={isEditMode && editingId === currentUser.id && form.password}
                                         />
                                         <button
@@ -261,7 +261,7 @@ export default function Users() {
                                         required={!isEditMode}
                                         placeholder={isEditMode ? "Leave blank to keep current" : "Min 6 characters"}
                                         value={form.password}
-                                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                        onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))}
                                     />
                                     <button
                                         type="button"
@@ -280,7 +280,7 @@ export default function Users() {
                                         required={!!form.password}
                                         placeholder="Repeat your password"
                                         value={form.confirmPassword}
-                                        onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                                        onChange={(e) => setForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
                                     />
                                     <button
                                         type="button"

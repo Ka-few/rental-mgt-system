@@ -5,6 +5,7 @@ const path = require('path');
 require('dotenv').config();
 const { db, initDb } = require('./db/init');
 const rateLimit = require('express-rate-limit');
+const { authenticate } = require('./middleware/auth');
 
 const app = express();
 
@@ -55,6 +56,10 @@ app.use('/uploads', express.static(uploadsPath, {
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+
+// Protect all following routes
+app.use(authenticate);
+
 app.use('/api/tenants', require('./routes/tenants'));
 app.use('/api/properties', require('./routes/properties'));
 app.use('/api/finance', require('./routes/finance'));

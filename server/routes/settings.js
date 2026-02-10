@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const { db } = require('../db/init');
+const { authorizeAdmin } = require('../middleware/auth');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../rental.db');
 
 // Backup Database
-router.get('/backup', (req, res) => {
+router.get('/backup', authorizeAdmin, (req, res) => {
     res.download(dbPath, 'rental_backup.db', (err) => {
         if (err) {
             console.error('Error downloading database:', err);
@@ -16,7 +17,7 @@ router.get('/backup', (req, res) => {
 });
 
 // Clear All Data
-router.post('/clear', (req, res) => {
+router.post('/clear', authorizeAdmin, (req, res) => {
     try {
         const tables = [
             'transactions',
