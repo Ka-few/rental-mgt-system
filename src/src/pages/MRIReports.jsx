@@ -20,6 +20,8 @@ export default function MRIReports() {
         monthLabel: ''
     });
 
+    const [companySettings, setCompanySettings] = useState({});
+
     const loadRecords = useCallback(async () => {
         setLoading(true);
         try {
@@ -35,6 +37,9 @@ export default function MRIReports() {
 
     useEffect(() => {
         loadRecords();
+        api.get('/settings')
+            .then(res => setCompanySettings(res.data))
+            .catch(err => console.error('Error fetching settings:', err));
     }, [loadRecords]);
 
     const handleCalculate = async () => {
@@ -104,19 +109,65 @@ export default function MRIReports() {
 
             const doc = new jsPDF();
 
-            // Title
-            doc.setFontSize(16);
-            doc.text(`MRI Report - ${record.month}`, 14, 20);
+            // --- Header branding ---
+            const companyName = companySettings.company_name || 'REAL ESTATE MANAGEMENT';
+            const companyAddress = companySettings.company_address || '';
+            const companyPhone = companySettings.company_phone || '';
+            const companyEmail = companySettings.company_email || '';
 
-            // Summary
+            // Border/Header Background
+            doc.setFillColor(30, 41, 59); // Slate-800
+            doc.rect(0, 0, 210, 40, 'F');
+
+            // Company Info
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyName.toUpperCase(), 14, 20);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${companyAddress}`, 14, 28);
+            doc.text(`Phone: ${companyPhone} | Email: ${companyEmail}`, 14, 34);
+
+            // Report Title & Date (Right Aligned)
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('MRI TAX REPORT', 196, 20, { align: 'right' });
             doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Period: ${record.month}`, 196, 28, { align: 'right' });
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 34, { align: 'right' });
+
+            // Reset text color for body
+            doc.setTextColor(0, 0, 0);
+
+            // Summary Section with Boxes
             const total = transactions.reduce((sum, t) => sum + t.amount, 0);
             const tax = total * 0.075;
             const net = total - tax;
 
-            doc.text(`Gross Rent Collected: KES ${total.toLocaleString()}`, 14, 30);
-            doc.text(`MRI Tax (7.5%): KES ${tax.toLocaleString()}`, 14, 36);
-            doc.text(`Net Income: KES ${net.toLocaleString()}`, 14, 42);
+            doc.setFillColor(248, 250, 252); // Slate-50 background for summary
+            doc.rect(14, 45, 182, 30, 'F');
+            doc.setDrawColor(226, 232, 240); // Slate-200 border
+            doc.rect(14, 45, 182, 30, 'S');
+
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text('FINANCIAL SUMMARY', 20, 52);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('Gross Rent Collected:', 20, 60);
+            doc.text('MRI Tax Payable (7.5%):', 20, 66);
+            doc.text('Net Income After Tax:', 20, 72);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text(`KES ${total.toLocaleString()}`, 100, 60);
+            doc.setTextColor(220, 38, 38); // Red color for tax
+            doc.text(`KES ${tax.toLocaleString()}`, 100, 66);
+            doc.setTextColor(5, 150, 105); // Emerald-600 color for net
+            doc.text(`KES ${net.toLocaleString()}`, 100, 72);
+            doc.setTextColor(0, 0, 0);
 
             // Table
             const tableData = transactions.map(tx => [
@@ -129,13 +180,23 @@ export default function MRIReports() {
             ]);
 
             autoTable(doc, {
-                startY: 50,
+                startY: 85,
                 head: [['Date', 'Tenant', 'House', 'Property', 'Description', 'Amount']],
                 body: tableData,
                 foot: [[{ content: 'Total Qualifying Rent:', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } }, `KES ${total.toLocaleString()}`]],
                 theme: 'striped',
-                headStyles: { fillColor: [59, 130, 246] },
-                footStyles: { fillColor: [229, 231, 235], textColor: [0, 0, 0], fontStyle: 'bold' }
+                headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
+                footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [250, 251, 253] },
+                margin: { top: 20 },
+                didDrawPage: (data) => {
+                    // Footer on each page
+                    const pageCount = doc.internal.getNumberOfPages();
+                    doc.setFontSize(8);
+                    doc.setTextColor(148, 163, 184); // Slate-400
+                    doc.text(`Page ${data.pageNumber} of ${pageCount}`, 196, 285, { align: 'right' });
+                    doc.text('This is a computer generated MRI Tax Report.', 14, 285);
+                }
             });
 
             doc.save(`MRI_Report_${record.month.replace(' ', '_')}.pdf`);
@@ -148,30 +209,30 @@ export default function MRIReports() {
 
     return (
         <div className="max-w-6xl mx-auto py-8 px-4">
-            <div className="flex justify-between items-end mb-10">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
                 <div>
                     <h1 className="text-3xl font-extrabold text-gray-900">KRA MRI Tax Reports</h1>
                     <p className="text-gray-500 mt-2">Residential Rental Income Tax (7.5%) tracking and filing records.</p>
                 </div>
-                <div className="flex gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <div>
+                <div className="w-full md:w-auto flex flex-wrap md:flex-nowrap gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex-1 min-w-[120px]">
                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Select Month</label>
                         <select
                             value={selectedDate.month}
                             onChange={e => setSelectedDate({ ...selectedDate, month: parseInt(e.target.value) })}
-                            className="bg-gray-50 border-none rounded-lg p-2 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-gray-50 border-none rounded-lg p-2 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             {Array.from({ length: 12 }, (_, i) => (
                                 <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString('default', { month: 'long' })}</option>
                             ))}
                         </select>
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-[120px]">
                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Select Year</label>
                         <select
                             value={selectedDate.year}
                             onChange={e => setSelectedDate({ ...selectedDate, year: parseInt(e.target.value) })}
-                            className="bg-gray-50 border-none rounded-lg p-2 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-gray-50 border-none rounded-lg p-2 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
@@ -179,7 +240,7 @@ export default function MRIReports() {
                     <button
                         onClick={handleCalculate}
                         disabled={calculating}
-                        className={`px-6 py-2 rounded-xl font-bold text-white transition-all shadow-lg self-end ${calculating ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95'}`}
+                        className={`w-full md:w-auto px-6 py-2 rounded-xl font-bold text-white transition-all shadow-lg self-end ${calculating ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95'}`}
                     >
                         {calculating ? 'Processing...' : 'Generate Record'}
                     </button>
@@ -188,65 +249,67 @@ export default function MRIReports() {
 
             {/* Revised Table Container: More standard, less "card-like" */}
             <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Month / Year</th>
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Gross Rent Collected</th>
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest text-blue-600">MRI Tax (7.5%)</th>
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Net Income</th>
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Status</th>
-                            <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {records.length === 0 ? (
-                            <tr>
-                                <td colSpan="6" className="px-8 py-20 text-center text-gray-400 font-medium italic">
-                                    No MRI records found. Generate a record to get started.
-                                </td>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
+                        <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Month / Year</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Gross Rent Collected</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest text-blue-600">MRI Tax (7.5%)</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Net Income</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Status</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Actions</th>
                             </tr>
-                        ) : records.map(record => (
-                            <tr key={record.id} className="hover:bg-blue-50/30 transition-colors">
-                                <td className="px-8 py-6 font-bold text-gray-800">{record.month}</td>
-                                <td className="px-8 py-6 font-mono font-medium text-gray-600">KES {record.gross_rent.toLocaleString()}</td>
-                                <td className="px-8 py-6 font-mono font-bold text-blue-600">KES {record.tax_payable.toLocaleString()}</td>
-                                <td className="px-8 py-6 font-mono font-medium text-emerald-600">KES {record.net_income.toLocaleString()}</td>
-                                <td className="px-8 py-6">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${record.status === 'Filed' ? 'bg-emerald-100 text-emerald-700' :
-                                        record.status === 'NIL' ? 'bg-gray-100 text-gray-600' :
-                                            'bg-amber-100 text-amber-700 animate-pulse'
-                                        }`}>
-                                        {record.status}
-                                    </span>
-                                </td>
-                                <td className="px-8 py-6 flex gap-3">
-                                    <button
-                                        onClick={() => handleViewDetails(record)}
-                                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-bold shadow-sm"
-                                        title="View Breakdown"
-                                    >
-                                        View Details
-                                    </button>
-                                    {record.status === 'Pending' && (
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {records.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" className="px-8 py-20 text-center text-gray-400 font-medium italic">
+                                        No MRI records found. Generate a record to get started.
+                                    </td>
+                                </tr>
+                            ) : records.map(record => (
+                                <tr key={record.id} className="hover:bg-blue-50/30 transition-colors">
+                                    <td className="px-8 py-6 font-bold text-gray-800">{record.month}</td>
+                                    <td className="px-8 py-6 font-mono font-medium text-gray-600">KES {record.gross_rent.toLocaleString()}</td>
+                                    <td className="px-8 py-6 font-mono font-bold text-blue-600">KES {record.tax_payable.toLocaleString()}</td>
+                                    <td className="px-8 py-6 font-mono font-medium text-emerald-600">KES {record.net_income.toLocaleString()}</td>
+                                    <td className="px-8 py-6">
+                                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${record.status === 'Filed' ? 'bg-emerald-100 text-emerald-700' :
+                                            record.status === 'NIL' ? 'bg-gray-100 text-gray-600' :
+                                                'bg-amber-100 text-amber-700 animate-pulse'
+                                            }`}>
+                                            {record.status}
+                                        </span>
+                                    </td>
+                                    <td className="px-8 py-6 flex gap-3">
                                         <button
-                                            onClick={() => handleFile(record.id)}
-                                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm"
+                                            onClick={() => handleViewDetails(record)}
+                                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-bold shadow-sm"
+                                            title="View Breakdown"
                                         >
-                                            Mark Filed
+                                            View Details
                                         </button>
-                                    )}
-                                    <button
-                                        onClick={() => handleExportMRI(record)}
-                                        className="px-4 py-2 border-2 border-gray-100 bg-white text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-50 shadow-sm"
-                                    >
-                                        Export PDF
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                        {record.status === 'Pending' && (
+                                            <button
+                                                onClick={() => handleFile(record.id)}
+                                                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm"
+                                            >
+                                                Mark Filed
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => handleExportMRI(record)}
+                                            className="px-4 py-2 border-2 border-gray-100 bg-white text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-50 shadow-sm"
+                                        >
+                                            Export PDF
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
 

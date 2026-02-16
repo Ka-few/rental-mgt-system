@@ -323,6 +323,12 @@ const schema = `
   );
 `;
 
+const crypto = require('crypto');
+
+// ... (existing imports)
+
+// ... (existing code)
+
 function seedSettings() {
   const defaultSettings = [
     { key: 'company_name', value: 'Rental Management System' },
@@ -331,11 +337,30 @@ function seedSettings() {
     { key: 'mri_enabled', value: 'false' },
     { key: 'penalty_enabled', value: 'false' },
     { key: 'penalty_type', value: 'Fixed' }, // Fixed or Percentage
-    { key: 'penalty_amount', value: '0' }
+    { key: 'penalty_amount', value: '0' },
+    { key: 'installation_date', value: new Date().toISOString() },
+    { key: 'license_key', value: '' },
+    { key: 'jwt_secret', value: crypto.randomBytes(64).toString('hex') }
   ];
 
   const stmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   defaultSettings.forEach(s => stmt.run(s.key, s.value));
+}
+
+function getJwtSecret() {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'jwt_secret'").get();
+    if (row) return row.value;
+
+    // Fallback: If for some reason it's missing, generate and save one now
+    const newSecret = crypto.randomBytes(64).toString('hex');
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('jwt_secret', ?)").run(newSecret);
+    return newSecret;
+  } catch (err) {
+    console.error('CRITICAL: Failed to retrieve JWT secret from DB:', err);
+    // Absolute last resort fallback to prevent crash, but should not happen if DB is up
+    return process.env.JWT_SECRET || 'emergency-fallback-secret-DO-NOT-USE-IN-PROD';
+  }
 }
 
 function seedHelpContent() {
@@ -477,4 +502,4 @@ function initDb() {
   });
 }
 
-module.exports = { initDb, get db() { return db; }, initializeDatabase };
+module.exports = { initDb, get db() { return db; }, initializeDatabase, getJwtSecret };

@@ -1,11 +1,13 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../context/AuthContext';
+import { useLicense } from '../context/LicenseContext';
 import HelpDrawer from '../components/Help/HelpDrawer';
 import GuidedTour from '../components/Help/GuidedTour';
 
 export default function MainLayout() {
     const { logout, user } = useAuth();
+    const { license } = useLicense();
 
     return (
         <div className="flex flex-row h-screen w-screen overflow-hidden bg-gray-100">

@@ -154,166 +154,160 @@ const HistoryModal = ({ isOpen, onClose, tenant, balances, companySettings, refr
 
     if (!isOpen || !tenant) return null;
 
-    const handlePrintReceipt = (transaction) => {
-        const receiptDate = new Date(transaction.date).toISOString().split('T')[0];
-        const tenantSafeName = tenant.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const receiptTitle = `Receipt_${tenantSafeName}_${receiptDate}_${transaction.id}`;
+    const handlePrintReceipt = async (transaction) => {
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const doc = new jsPDF({ format: [100, 150], unit: 'mm' }); // Smaller size for receipt
 
-        const printWindow = window.open('', '', 'width=600,height=600');
-        printWindow.document.write(`
-            <html>
-            <head>
-                <title>${receiptTitle}</title>
-                <style>
-                    body { font-family: 'Courier New', monospace; padding: 20px; }
-                    .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 20px; }
-                    .details { margin-bottom: 20px; }
-                    .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-                    .total { border-top: 2px dashed #000; padding-top: 10px; font-weight: bold; font-size: 1.2em; }
-                    .footer { text-align: center; margin-top: 40px; font-size: 0.8em; }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>${companySettings.company_name || 'PAYMENT RECEIPT'}</h2>
-                    <p>${companySettings.company_address || 'Rental Management System'}</p>
-                    <p>${companySettings.company_phone || ''}</p>
-                </div>
-                <div class="details">
-                    <div class="row"><span>Date:</span> <span>${new Date(transaction.date).toLocaleDateString()}</span></div>
-                    <div class="row"><span>Receipt No:</span> <span>${transaction.id}</span></div>
-                    <div class="row"><span>Tenant:</span> <span>${tenant.full_name}</span></div>
-                    <div class="row"><span>Property:</span> <span>${balances.find(b => b.tenant_id === tenant.tenant_id)?.property_name || 'N/A'}</span></div>
-                    <div class="row"><span>Unit:</span> <span>${balances.find(b => b.tenant_id === tenant.tenant_id)?.house_number || 'N/A'}</span></div>
-                    <div class="row"><span>Method:</span> <span>${transaction.payment_method}</span></div>
-                    ${transaction.reference_code ? `<div class="row"><span>Ref:</span> <span>${transaction.reference_code}</span></div>` : ''}
-                </div>
-                <div class="details">
-                   <div class="row"><span>Description:</span> <span>${transaction.description || 'Rent Payment'}</span></div>
-                </div>
-                <div class="row total">
-                    <span>AMOUNT PAID:</span>
-                    <span>${transaction.amount.toLocaleString()} KES</span>
-                </div>
-                <div class="footer">
-                    <p>Received By: __________________________</p>
-                    <p>Thank you for your payment!</p>
-                </div>
-                <script>
-                    window.onload = function() { window.print(); window.close(); }
-                </script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
+            const companyName = companySettings.company_name || 'REAL ESTATE MANAGEMENT';
+            const companyAddress = companySettings.company_address || '';
+            const companyPhone = companySettings.company_phone || '';
+
+            // Header
+            doc.setFillColor(30, 41, 59);
+            doc.rect(0, 0, 100, 25, 'F');
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyName.toUpperCase(), 50, 12, { align: 'center' });
+
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.text(companyAddress, 50, 18, { align: 'center' });
+            doc.text(`Phone: ${companyPhone}`, 50, 22, { align: 'center' });
+
+            // Receipt Title
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('PAYMENT RECEIPT', 50, 35, { align: 'center' });
+
+            // Details
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+
+            let y = 45;
+            const drawRow = (label, value) => {
+                doc.setFont('helvetica', 'bold');
+                doc.text(label, 10, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(value), 90, y, { align: 'right' });
+                y += 6;
+            };
+
+            const tenantBalance = balances.find(b => b.tenant_id === tenant.tenant_id);
+
+            drawRow('Receipt No:', transaction.id);
+            drawRow('Date:', new Date(transaction.date).toLocaleDateString());
+            drawRow('Tenant:', tenant.full_name);
+            drawRow('Property:', tenantBalance?.property_name || 'N/A');
+            drawRow('House:', tenantBalance?.house_number || 'N/A');
+            drawRow('Method:', transaction.payment_method || 'N/A');
+            if (transaction.reference_code) drawRow('Ref:', transaction.reference_code);
+            drawRow('Description:', transaction.description || 'Rent Payment');
+
+            y += 4;
+            doc.setDrawColor(200, 200, 200);
+            doc.line(10, y, 90, y);
+            y += 8;
+
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AMOUNT PAID:', 10, y);
+            doc.text(`KES ${transaction.amount.toLocaleString()}`, 90, y, { align: 'right' });
+
+            y += 15;
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'italic');
+            doc.text('Received By: __________________________', 50, y, { align: 'center' });
+            y += 10;
+            doc.text('Thank you for your payment!', 50, y, { align: 'center' });
+
+            doc.save(`Receipt_${tenant.full_name.replace(/\s+/g, '_')}_${transaction.id}.pdf`);
+            toast.success('Receipt generated successfully');
+        } catch (err) {
+            console.error('Receipt error:', err);
+            toast.error('Failed to generate receipt');
+        }
     };
 
-    const handleExportStatement = () => {
-        const tenantSafeName = tenant.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const reportTitle = `Statement_${tenantSafeName}_${new Date().toISOString().split('T')[0]}`;
-        const currentBalance = balances.find(b => b.tenant_id === tenant.tenant_id)?.balance || 0;
+    const handleExportStatement = async () => {
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
+            const doc = new jsPDF();
 
-        const printWindow = window.open('', '', 'width=800,height=900');
-        printWindow.document.write(`
-            <html>
-            <head>
-                <title>${reportTitle}</title>
-                <style>
-                    body { font-family: 'Inter', sans-serif; padding: 40px; color: #333; }
-                    .header { display: flex; justify-content: space-between; border-bottom: 4px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; }
-                    .company-info h1 { margin: 0; color: #1e293b; text-transform: uppercase; letter-spacing: 1px; }
-                    .company-info p { margin: 2px 0; color: #64748b; font-size: 0.9em; }
-                    .statement-title { text-align: right; }
-                    .statement-title h2 { margin: 0; color: #3b82f6; font-size: 2em; }
-                    .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
-                    .detail-box h3 { font-size: 0.8em; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #f1f5f9; }
-                    .detail-box p { font-weight: bold; margin: 0; }
-                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-                    th { text-align: left; padding: 12px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; font-size: 0.85em; color: #64748b; text-transform: uppercase; }
-                    td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9em; }
-                    .type-Payment { color: #10b981; font-weight: 600; }
-                    .type-Charge { color: #ef4444; font-weight: 600; }
-                    .amount-column { text-align: right; font-family: monospace; font-weight: bold; font-size: 1.1em; }
-                    .summary { background: #1e293b; color: white; padding: 25px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-                    .summary-label { font-size: 0.9em; opacity: 0.8; }
-                    .summary-value { font-size: 1.8em; font-weight: 800; }
-                    .footer { margin-top: 50px; text-align: center; font-size: 0.8em; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 20px; }
-                    @media print { .no-print { display: none; } }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="company-info">
-                        <h1>${companySettings.company_name || 'REAL ESTATE MANAGEMENT'}</h1>
-                        <p>${companySettings.company_address || ''}</p>
-                        <p>Phone: ${companySettings.company_phone || ''}</p>
-                        <p>Email: ${companySettings.company_email || ''}</p>
-                    </div>
-                    <div class="statement-title">
-                        <h2>ACCOUNT STATEMENT</h2>
-                        <p>Generated on: ${new Date().toLocaleDateString()}</p>
-                    </div>
-                </div>
+            const companyName = companySettings.company_name || 'REAL ESTATE MANAGEMENT';
+            const companyAddress = companySettings.company_address || '';
+            const companyPhone = companySettings.company_phone || '';
+            const companyEmail = companySettings.company_email || '';
 
-                <div class="details-grid">
-                    <div class="detail-box">
-                        <h3>Statement For</h3>
-                        <p>${tenant.full_name}</p>
-                        <p style="font-weight: normal; color: #64748b;">${tenant.phone || ''}</p>
-                    </div>
-                    <div class="detail-box">
-                        <h3>Property Details</h3>
-                        <p>${balances.find(b => b.tenant_id === tenant.tenant_id)?.property_name || 'N/A'}</p>
-                        <p style="font-weight: normal; color: #64748b;">Unit: ${balances.find(b => b.tenant_id === tenant.tenant_id)?.house_number || 'N/A'}</p>
-                    </div>
-                </div>
+            // Header branding
+            doc.setFillColor(30, 41, 59);
+            doc.rect(0, 0, 210, 40, 'F');
 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th style="text-align: right;">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${transactions.map(t => `
-                            <tr>
-                                <td>${new Date(t.date).toLocaleDateString()}</td>
-                                <td class="type-${t.type}">${t.type}</td>
-                                <td>${t.description || '-'} ${t.payment_method ? `(via ${t.payment_method})` : ''}</td>
-                                <td class="amount-column ${t.type === 'Payment' ? 'type-Payment' : 'type-Charge'}">
-                                    ${t.type === 'Payment' ? '' : '-'}${t.amount.toLocaleString()}
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyName.toUpperCase(), 14, 20);
 
-                <div class="summary">
-                    <div>
-                        <span class="summary-label">Current Account Standing</span>
-                    </div>
-                    <div>
-                        <span class="summary-value">${currentBalance.toLocaleString()} KES</span>
-                        <div style="font-size: 0.7em; text-align: right; opacity: 0.6;">
-                            ${currentBalance < 0 ? 'TOTAL ARREARS' : 'ACCOUNT CREDIT'}
-                        </div>
-                    </div>
-                </div>
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text(companyAddress, 14, 28);
+            doc.text(`Phone: ${companyPhone} | Email: ${companyEmail}`, 14, 34);
 
-                <div class="footer">
-                    <p>This is a computer-generated account statement. For any queries, please contact our management office.</p>
-                </div>
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('ACCOUNT STATEMENT', 196, 20, { align: 'right' });
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 28, { align: 'right' });
 
-                <script>
-                    window.onload = function() { window.print(); window.close(); }
-                </script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
+            // Tenant/Property Info Box
+            doc.setTextColor(0, 0, 0);
+            doc.setFillColor(248, 250, 252);
+            doc.rect(14, 45, 182, 30, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.rect(14, 45, 182, 30, 'S');
+
+            const tenantBalance = balances.find(b => b.tenant_id === tenant.tenant_id);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('TENANT DETAILS', 20, 52);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Name: ${tenant.full_name}`, 20, 60);
+            doc.text(`House: ${tenantBalance?.house_number || 'N/A'}`, 20, 66);
+            doc.text(`Property: ${tenantBalance?.property_name || 'N/A'}`, 100, 60);
+
+            const currentBalance = tenantBalance?.balance || 0;
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Current Balance: KES ${currentBalance.toLocaleString()}`, 100, 66);
+
+            // Table
+            const tableData = transactions.map(t => [
+                new Date(t.date).toLocaleDateString(),
+                t.type,
+                `${t.description || '-'} ${t.payment_method ? `(via ${t.payment_method})` : ''}`,
+                `${t.type === 'Payment' ? '+' : '-'}${t.amount.toLocaleString()}`
+            ]);
+
+            autoTable(doc, {
+                startY: 80,
+                head: [['Date', 'Type', 'Description', 'Amount (KES)']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
+                columnStyles: { 3: { halign: 'right' } }
+            });
+
+            doc.save(`Statement_${tenant.full_name.replace(/\s+/g, '_')}.pdf`);
+            toast.success('Statement exported successfully');
+        } catch (err) {
+            console.error('Statement error:', err);
+            toast.error('Failed to export statement');
+        }
     };
 
     const handleEditSave = async (e) => {

@@ -1,19 +1,67 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const { db } = require('../db/init');
+const fs = require('fs');
+const multer = require('multer');
+const { db, initializeDatabase } = require('../db/init');
 const { authorizeAdmin } = require('../middleware/auth');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../rental.db');
 
-// Backup Database
+// Configure Multer for File Uploads
+const upload = multer({ dest: 'uploads/' });
+
+// Backup Database (Download)
 router.get('/backup', authorizeAdmin, (req, res) => {
-    res.download(dbPath, 'rental_backup.db', (err) => {
+    // Ensure the DB is flushed to disk before downloading
+    try {
+        if (db.saveImmediately) {
+            db.saveImmediately();
+        }
+    } catch (e) {
+        console.warn('Could not force save before backup:', e);
+    }
+
+    res.download(dbPath, `rental_backup_${new Date().toISOString().split('T')[0]}.db`, (err) => {
         if (err) {
             console.error('Error downloading database:', err);
-            res.status(500).send('Could not download database.');
+            if (!res.headersSent) {
+                res.status(500).send('Could not download database.');
+            }
         }
     });
+});
+
+// Restore Database (Upload)
+router.post('/restore', authorizeAdmin, upload.single('backupFile'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    const uploadedPath = req.file.path;
+
+    try {
+        // 1. Verify it's a valid SQLite file (basic check)
+        // ideally we'd check magic headers, but for now we rely on trust + try/catch
+
+        // 2. Overwrite the existing DB
+        // Close existing connection if possible or just overwrite file?
+        // SQLite (especially sql.js wrapper) holds file open. 
+        // We might need to restart the app, but let's try hot-swapping.
+
+        fs.copyFileSync(uploadedPath, dbPath);
+
+        // 3. Reload the database connection
+        await initializeDatabase();
+
+        // 4. Cleanup
+        fs.unlinkSync(uploadedPath);
+
+        res.json({ message: 'Database restored successfully! The system has been reloaded with the backup data.' });
+    } catch (err) {
+        console.error('RESTORE ERROR:', err);
+        res.status(500).json({ message: 'Failed to restore database. Ensure the file is a valid backup.' });
+    }
 });
 
 // Clear All Data

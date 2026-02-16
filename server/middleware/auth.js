@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const SECRET_KEY = process.env.JWT_SECRET || 'dev-only-secret-key-123-change-this';
+const { getJwtSecret } = require('../db/init');
 
 const authenticate = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -9,7 +9,7 @@ const authenticate = (req, res, next) => {
         return res.status(401).json({ message: 'Authentication required. Please log in.' });
     }
 
-    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+    jwt.verify(token, getJwtSecret(), (err, decoded) => {
         if (err) {
             console.error('JWT Verification Error:', err.message);
             return res.status(403).json({ message: 'Session expired or invalid. Please log in again.' });

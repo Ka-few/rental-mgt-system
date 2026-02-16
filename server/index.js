@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
+
 const { db, initDb } = require('./db/init');
 const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./middleware/auth');
@@ -56,6 +57,7 @@ app.use('/uploads', express.static(uploadsPath, {
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/license', require('./routes/license'));
 
 // Protect all following routes
 app.use(authenticate);
@@ -91,12 +93,17 @@ async function start() {
 
     try {
         await initializeDatabase();
-        app.listen(PORT, () => {
+        const server = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             if (process.send) {
                 process.send('ready');
             }
         });
+
+        // Anti-Gravity Keep-Alive: Prevent process exit if event loop drains
+        // This is necessary because sql.js/fs interactions sometimes clear the loop prematurely
+        setInterval(() => { }, 1000 * 60 * 60);
+
     } catch (err) {
         console.error('Failed to start server:', err);
         process.exit(1);

@@ -139,11 +139,39 @@ const Settings = () => {
         }
     };
 
+    const handleRestore = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!window.confirm(`WARNING: You are about to restore the database from "${file.name}".\n\nThis will OVERWRITE all current data (Tenants, Finance, Properties) with the data from the backup.\n\nThis action cannot be undone. Are you sure?`)) {
+            e.target.value = ''; // Reset input
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('backupFile', file);
+
+        try {
+            toast.success('Restoring database... Please wait.');
+            await api.post('/settings/restore', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast.success('Database restored successfully! Reloading...');
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (err) {
+            console.error('Restore Error:', err);
+            toast.error(err.response?.data?.message || 'Failed to restore database.');
+            e.target.value = ''; // Reset input
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto py-8 px-4 pb-20">
             <h1 className="text-3xl font-extrabold mb-8 text-gray-900 border-b pb-4">System Settings</h1>
 
-            {/* Company Profile Section */}
+            {/* ... Existing Company Profile, MRI, Penalty, Security sections ... */}
+
+            {/* ... (Company Profile) ... */}
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
                 <div className="flex items-center gap-3 mb-8">
                     <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
@@ -353,23 +381,39 @@ const Settings = () => {
                 </form>
             </div>
 
-            {/* Advanced Section */}
+            {/* Data Management Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" /><path fillRule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
-                        Export Database
+                        Data Backup & Restoration
                     </h3>
-                    <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                        Securely download your current system data to a local file for safekeeping.
+                    <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                        Download your database for safekeeping, or restore from a previous backup.
                     </p>
-                    <button
-                        onClick={handleBackup}
-                        className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
-                        Download Backup
-                    </button>
+                    <div className="space-y-4">
+                        <button
+                            onClick={handleBackup}
+                            className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            Download Backup
+                        </button>
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept=".db"
+                                onChange={handleRestore}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            />
+                            <button
+                                className="w-full py-4 bg-white text-blue-600 border-2 border-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                Restore from File
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="bg-red-50 p-8 rounded-2xl shadow-sm border-2 border-red-100">

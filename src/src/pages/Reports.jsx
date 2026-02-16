@@ -60,8 +60,131 @@ export default function Reports() {
         loadData();
     };
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrintPDF = async () => {
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
+
+            const doc = new jsPDF();
+            const companyName = companySettings.company_name || 'REAL ESTATE MANAGEMENT';
+            const companyAddress = companySettings.company_address || '';
+            const companyPhone = companySettings.company_phone || '';
+            const companyEmail = companySettings.company_email || '';
+
+            // --- Header branding ---
+            doc.setFillColor(30, 41, 59); // Slate-800
+            doc.rect(0, 0, 210, 40, 'F');
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyName.toUpperCase(), 14, 20);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${companyAddress}`, 14, 28);
+            doc.text(`Phone: ${companyPhone} | Email: ${companyEmail}`, 14, 34);
+
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            const reportTitle = activeTab === 'financial' ? 'FINANCIAL SUMMARY' :
+                activeTab === 'occupancy' ? 'OCCUPANCY REPORT' : 'DEBTORS REPORT';
+            doc.text(reportTitle, 196, 20, { align: 'right' });
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 28, { align: 'right' });
+            if (activeTab === 'financial' && (finFilters.startDate || finFilters.endDate)) {
+                doc.text(`Period: ${finFilters.startDate || 'Start'} to ${finFilters.endDate || 'End'}`, 196, 34, { align: 'right' });
+            }
+
+            doc.setTextColor(0, 0, 0);
+
+            if (activeTab === 'financial') {
+                // Summary Box
+                doc.setFillColor(248, 250, 252);
+                doc.rect(14, 45, 182, 35, 'F');
+                doc.setDrawColor(226, 232, 240);
+                doc.rect(14, 45, 182, 35, 'S');
+
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'bold');
+                doc.text('FINANCIAL TOTALS', 20, 52);
+
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Total Revenue: KES ${financialData.totalRevenue.toLocaleString()}`, 20, 60);
+                doc.text(`Total Expenses: KES ${financialData.totalExpenses.toLocaleString()}`, 20, 66);
+                doc.text(`MRI Tax (7.5%): KES ${financialData.mriTax.toLocaleString()}`, 20, 72);
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(`NET ADJUSTED INCOME: KES ${financialData.netIncome.toLocaleString()}`, 120, 72);
+
+                // Detailed Transactions Table
+                const tableData = financialTransactions.map(t => [
+                    new Date(t.date).toLocaleDateString(),
+                    t.tenant_name,
+                    `${t.property_name} - ${t.house_number}`,
+                    t.type,
+                    `KES ${t.amount.toLocaleString()}`,
+                    t.payment_method || '-'
+                ]);
+
+                autoTable(doc, {
+                    startY: 85,
+                    head: [['Date', 'Tenant', 'Location', 'Type', 'Amount', 'Method']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
+                    margin: { top: 20 }
+                });
+            } else if (activeTab === 'occupancy') {
+                const tableData = occupancyData.map(d => [
+                    d.name,
+                    d.total_units,
+                    d.occupied_units,
+                    d.vacant_units,
+                    `${d.occupancy_rate}%`
+                ]);
+
+                autoTable(doc, {
+                    startY: 50,
+                    head: [['Property', 'Total Units', 'Occupied', 'Vacant', 'Occupancy Rate']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] }
+                });
+            } else if (activeTab === 'arrears') {
+                const tableData = arrearsData.map(t => [
+                    t.full_name,
+                    t.phone,
+                    t.house,
+                    `KES ${t.total_penalties.toLocaleString()}`,
+                    `KES ${t.arrears.toLocaleString()}`
+                ]);
+
+                autoTable(doc, {
+                    startY: 50,
+                    head: [['Tenant Name', 'Phone', 'House', 'Penalties', 'Total Arrears']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] }
+                });
+            }
+
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(148, 163, 184);
+                doc.text(`Page ${i} of ${pageCount}`, 196, 285, { align: 'right' });
+                doc.text('This is a computer generated system report.', 14, 285);
+            }
+
+            doc.save(`${activeTab}_report_${new Date().toISOString().split('T')[0]}.pdf`);
+            toast.success('PDF report generated successfully');
+        } catch (err) {
+            console.error('PDF error:', err);
+            toast.error('Failed to generate PDF report');
+        }
     };
 
     const handleExport = async () => {
@@ -152,7 +275,7 @@ export default function Reports() {
                     <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">
                         📊 Export to Excel
                     </button>
-                    <button onClick={handlePrint} className="bg-gray-800 text-white px-4 py-2 rounded shadow hover:bg-gray-700">
+                    <button onClick={handlePrintPDF} className="bg-gray-800 text-white px-4 py-2 rounded shadow hover:bg-gray-700">
                         🖨 Print / PDF
                     </button>
                 </div>

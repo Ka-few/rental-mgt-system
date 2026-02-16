@@ -2,17 +2,8 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db } = require('../db/init');
+const { db, getJwtSecret } = require('../db/init');
 const { authenticate, authorizeAdmin } = require('../middleware/auth');
-
-const SECRET_KEY = process.env.JWT_SECRET || 'dev-only-secret-key-123-change-this';
-if (!process.env.JWT_SECRET) {
-    console.warn('WARNING: JWT_SECRET environment variable is not defined! Falling back to development key.');
-    if (process.env.NODE_ENV === 'production') {
-        console.error('FATAL: Running in production without JWT_SECRET!');
-        process.exit(1);
-    }
-}
 
 // Login Route
 router.post('/login', (req, res) => {
@@ -30,7 +21,7 @@ router.post('/login', (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, getJwtSecret(), { expiresIn: '24h' });
 
         res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
     } catch (err) {
