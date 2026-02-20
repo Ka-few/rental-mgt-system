@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, getJwtSecret } = require('../db/init');
+const { db, getJwtSecret, generateUUID } = require('../db/init');
 const { authenticate, authorizeAdmin } = require('../middleware/auth');
 
 // Login Route
@@ -87,8 +87,9 @@ router.post('/register', authenticate, authorizeAdmin, (req, res) => {
 
     try {
         const hash = bcrypt.hashSync(password, 10);
-        db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run(username, hash, role || 'staff');
-        res.json({ message: 'User created successfully' });
+        const newId = generateUUID();
+        db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(newId, username, hash, role || 'staff');
+        res.json({ message: 'User created successfully', id: newId });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
             return res.status(400).json({ message: 'Username already exists' });
@@ -99,7 +100,7 @@ router.post('/register', authenticate, authorizeAdmin, (req, res) => {
 
 // Update user (Admin only)
 router.put('/users/:id', authenticate, authorizeAdmin, (req, res) => {
-    const targetId = parseInt(req.params.id);
+    const targetId = req.params.id;
     const { username, role, currentPassword, newPassword } = req.body;
 
     try {
@@ -129,7 +130,7 @@ router.put('/users/:id', authenticate, authorizeAdmin, (req, res) => {
 
 // Delete user
 router.delete('/users/:id', authenticate, authorizeAdmin, (req, res) => {
-    if (parseInt(req.params.id) === req.user.id) {
+    if (req.params.id === req.user.id) {
         return res.status(400).json({ message: 'You cannot delete your own account' });
     }
 

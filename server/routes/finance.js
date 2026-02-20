@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 
 // Get transactions for a tenant
 router.get('/tenant/:id', (req, res) => {
@@ -16,12 +16,13 @@ router.get('/tenant/:id', (req, res) => {
 router.post('/payment', (req, res) => {
     const { tenant_id, amount, description, payment_method, reference_code, date } = req.body;
     try {
+        const id = generateUUID();
         const stmt = db.prepare(`
-        INSERT INTO transactions (tenant_id, type, amount, description, payment_method, reference_code, date)
-        VALUES (?, 'Payment', ?, ?, ?, ?, ?)
+        INSERT INTO transactions (id, tenant_id, type, amount, description, payment_method, reference_code, date)
+        VALUES (?, ?, 'Payment', ?, ?, ?, ?, ?)
     `);
-        const info = stmt.run(tenant_id, amount, description, payment_method, reference_code, date || new Date().toISOString());
-        res.json({ id: info.lastInsertRowid, success: true });
+        stmt.run(id, tenant_id, amount, description, payment_method, reference_code, date || new Date().toISOString());
+        res.json({ id, success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -31,12 +32,13 @@ router.post('/payment', (req, res) => {
 router.post('/charge', (req, res) => {
     const { tenant_id, type, amount, description } = req.body;
     try {
+        const id = generateUUID();
         const stmt = db.prepare(`
-            INSERT INTO transactions (tenant_id, type, amount, description)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO transactions (id, tenant_id, type, amount, description)
+            VALUES (?, ?, ?, ?, ?)
         `);
-        const info = stmt.run(tenant_id, type, amount, description);
-        res.json({ id: info.lastInsertRowid, success: true });
+        stmt.run(id, tenant_id, type, amount, description);
+        res.json({ id, success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -53,8 +55,8 @@ router.post('/rent-run', (req, res) => {
         `).all();
 
         const insertStmt = db.prepare(`
-            INSERT INTO transactions (tenant_id, type, amount, description, date)
-            VALUES (?, 'Rent Charge', ?, ?, ?)
+            INSERT INTO transactions (id, tenant_id, type, amount, description, date)
+            VALUES (?, ?, 'Rent Charge', ?, ?, ?)
         `);
 
         const date = new Date().toISOString();
@@ -63,7 +65,7 @@ router.post('/rent-run', (req, res) => {
 
         const transaction = db.transaction((tenants) => {
             for (const tenant of tenants) {
-                insertStmt.run(tenant.id, tenant.rent_amount, description, date);
+                insertStmt.run(generateUUID(), tenant.id, tenant.rent_amount, description, date);
             }
         });
 
@@ -86,14 +88,14 @@ router.post('/rent-run', (req, res) => {
                     HAVING balance < (-2 * h.rent_amount)
                 `).all();
 
-                const penaltyStmt = db.prepare(`INSERT INTO transactions (tenant_id, type, amount, description, date) VALUES (?, 'Adjustment', ?, ?, ?)`);
+                const penaltyStmt = db.prepare(`INSERT INTO transactions (id, tenant_id, type, amount, description, date) VALUES (?, ?, 'Adjustment', ?, ?, ?)`);
                 const penaltyDate = new Date().toISOString();
 
                 db.transaction(() => {
                     for (const tenant of lateTenants) {
                         const amount = settings.penalty_type === 'Fixed' ? parseFloat(settings.penalty_amount) : Math.abs(tenant.balance) * (parseFloat(settings.penalty_amount) / 100);
                         if (amount > 0) {
-                            penaltyStmt.run(tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, penaltyDate);
+                            penaltyStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, penaltyDate);
                         }
                     }
                 })();
@@ -193,8 +195,8 @@ router.post('/apply-penalties', (req, res) => {
         `).all();
 
         const insertStmt = db.prepare(`
-            INSERT INTO transactions (tenant_id, type, amount, description, date)
-            VALUES (?, 'Adjustment', ?, ?, ?)
+            INSERT INTO transactions (id, tenant_id, type, amount, description, date)
+            VALUES (?, ?, 'Adjustment', ?, ?, ?)
         `);
 
         let appliedCount = 0;
@@ -213,7 +215,7 @@ router.post('/apply-penalties', (req, res) => {
                 }
 
                 if (amount > 0) {
-                    insertStmt.run(tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, date);
+                    insertStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, date);
                     appliedCount++;
                 }
             }

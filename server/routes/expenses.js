@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 const { authorizeAdmin } = require('../middleware/auth');
 
 router.use(authorizeAdmin);
@@ -40,11 +40,13 @@ router.post('/', (req, res) => {
     }
 
     try {
+        const id = generateUUID();
         const stmt = db.prepare(`
-            INSERT INTO expenses (property_id, category, amount, date, description, payment_method)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO expenses (id, property_id, category, amount, date, description, payment_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        const info = stmt.run(
+        stmt.run(
+            id,
             property_id || null,
             category,
             amount,
@@ -52,7 +54,7 @@ router.post('/', (req, res) => {
             description || '',
             payment_method || 'Cash'
         );
-        res.json({ id: info.lastInsertRowid, message: 'Expense recorded successfully' });
+        res.json({ id, message: 'Expense recorded successfully' });
     } catch (err) {
         console.error('ADD EXPENSE ERROR:', err);
         res.status(500).json({ error: err.message });

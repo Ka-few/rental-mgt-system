@@ -20,6 +20,10 @@ A comprehensive desktop application for managing rental properties, tenants, and
 - **Toast Notifications** - Professional feedback for all actions
 - **Database Backup** - Download and restore your data
 - **Receipt Printing** - Generate payment receipts with company branding
+- **Bi-directional Sync** - Sync data between Owner (Master) and Caretaker (Branch) computers
+- **Local SQLite DB** - Each machine maintains its own local copy of the database
+- **Incremental Updates** - Periodic background sync (every 3h) of only new/modified records
+- **File & Image Sync** - Automatic transfer of maintenance photos and receipts
 
 ## 🚀 Installation
 
@@ -69,6 +73,7 @@ npm run build
 - **Desktop**: Electron
 - **Charts**: Recharts
 - **Export**: XLSX (SheetJS)
+- **Sync**: Axios + Multipurpose Form Data
 
 ## 📖 User Guide
 
@@ -108,6 +113,35 @@ npm run build
 2. Select report type (Financial, Occupancy, Debtors)
 3. Apply filters if needed
 4. Click "Export to Excel" to download
+
+### 🔄 Synchronization (Owner & Caretaker)
+
+The system supports a hierarchical sync model where a primary **Owner** computer acts as a server for one or more **Caretaker** (Branch) computers.
+
+#### 1. Setup Owner (Master)
+1. Ensure the computer is on a stable network.
+2. Find your local IP address (e.g., `192.168.1.10`).
+3. The Owner computer is now ready to receive sync requests.
+
+#### 2. Register Caretaker (Branch)
+1. Open the app on the Caretaker machine.
+2. Navigate to the **Synchronization** page.
+3. Enter the Owner's IP address (e.g., `http://192.168.1.10:3000`).
+4. Enter a name for this branch (e.g., "Parklands Office").
+5. Click **Register with Owner**.
+6. Once "REGISTERED" status appears, the machines are paired.
+
+#### 3. Using Sync
+- **Manual Sync**: Click **Sync Now** on the Synchronization page at any time.
+- **Auto Sync**: The app automatically attempts to sync every 3 hours while open.
+- **Data Flow**:
+    - **Push**: Local records (Tenants, Finance, Maintenance) are sent to Owner.
+    - **Pull**: Approved items and updates from other branches are received.
+    - **Files**: Photos and receipts are automatically transferred in the background.
+
+#### 4. Conflict Resolution
+- If the same record is edited on both machines before a sync, the **Owner's version takes priority**.
+- Soft-deleted records on one machine will be reflected on others during the next sync.
 
 ### Backup & Restore
 

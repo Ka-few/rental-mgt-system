@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -42,9 +42,9 @@ const upload = multer({
 // Helper to log maintenance actions
 const logAction = (maintenanceId, action, performedBy) => {
     db.prepare(`
-        INSERT INTO maintenance_logs (maintenance_id, action, performed_by)
-        VALUES (?, ?, ?)
-    `).run(maintenanceId, action, performedBy);
+        INSERT INTO maintenance_logs (id, maintenance_id, action, performed_by)
+        VALUES (?, ?, ?, ?)
+    `).run(generateUUID(), maintenanceId, action, performedBy);
 };
 
 // Get all maintenance requests
@@ -131,12 +131,12 @@ router.post('/', upload.single('issue_image'), (req, res) => {
             const house = db.prepare('SELECT property_id FROM houses WHERE id = ?').get(house_id);
             if (!house) throw new Error('House not found');
 
+            const maintenanceId = generateUUID();
             const stmt = db.prepare(`
-                INSERT INTO maintenance_requests (property_id, house_id, title, description, priority, issue_image_path, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'Open')
+                INSERT INTO maintenance_requests (id, property_id, house_id, title, description, priority, issue_image_path, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'Open')
             `);
-            const info = stmt.run(house.property_id, house_id, title, description, priority || 'Normal', issue_image_path);
-            const maintenanceId = info.lastInsertRowid;
+            stmt.run(maintenanceId, house.property_id, house_id, title, description, priority || 'Normal', issue_image_path);
 
             logAction(maintenanceId, 'Created Request', performed_by);
             return maintenanceId;
@@ -184,9 +184,9 @@ router.post('/:id/expense', upload.single('receipt'), (req, res) => {
         const logExpenseTransaction = db.transaction(() => {
             // Insert into maintenance_expenses
             db.prepare(`
-                INSERT INTO maintenance_expenses (maintenance_id, amount, description, receipt_path)
-                VALUES (?, ?, ?, ?)
-            `).run(id, amount, description, receipt_path);
+                INSERT INTO maintenance_expenses (id, maintenance_id, amount, description, receipt_path)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(generateUUID(), id, amount, description, receipt_path);
 
             // Update maintenance_requests status and receipt path
             db.prepare(`
@@ -230,9 +230,9 @@ router.post('/:id/approve', (req, res) => {
 
             // 2. Integration: Insert into Finance expenses table
             db.prepare(`
-                INSERT INTO expenses (property_id, category, amount, reference_id, description, date)
-                VALUES (?, 'Maintenance', ?, ?, ?, date('now'))
-            `).run(request.property_id, request.cost, id, `Maintenance: ${request.title}`);
+                INSERT INTO expenses (id, property_id, category, amount, reference_id, description, date)
+                VALUES (?, ?, 'Maintenance', ?, ?, ?, date('now'))
+            `).run(generateUUID(), request.property_id, request.cost, id, `Maintenance: ${request.title}`);
 
             logAction(id, 'Approved and finalized', approved_by);
         });

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -75,12 +75,12 @@ router.post('/', upload.single('agreement'), (req, res) => {
 
     const insert = db.transaction(() => {
         // 1. Insert Tenant
+        const tenantId = generateUUID();
         const stmt = db.prepare(`
-      INSERT INTO tenants (full_name, national_id, phone, email, house_id, move_in_date, agreement_path, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')
+      INSERT INTO tenants (id, full_name, national_id, phone, email, house_id, move_in_date, agreement_path, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')
     `);
-        const info = stmt.run(full_name, national_id, phone, email, house_id, move_in_date || new Date().toISOString(), agreementPath);
-        const tenantId = info.lastInsertRowid;
+        stmt.run(tenantId, full_name, national_id, phone, email, house_id, move_in_date || new Date().toISOString(), agreementPath);
 
         // 2. Update House Status to Occupied
         if (house_id) {
@@ -90,20 +90,17 @@ router.post('/', upload.single('agreement'), (req, res) => {
         // 3. Record Initial Deposit (if any)
         if (initial_deposit && Number(initial_deposit) > 0) {
             db.prepare(`
-                INSERT INTO transactions (tenant_id, type, amount, description, payment_method)
-                VALUES (?, 'Deposit', ?, 'Initial Rental Deposit', 'Cash/Transfer')
-            `).run(tenantId, Number(initial_deposit));
+                INSERT INTO transactions (id, tenant_id, type, amount, description, payment_method)
+                VALUES (?, ?, 'Deposit', ?, 'Initial Rental Deposit', 'Cash/Transfer')
+            `).run(generateUUID(), tenantId, Number(initial_deposit));
         }
 
         // 4. Record First Month Rent (if any)
         if (first_month_rent && Number(first_month_rent) > 0) {
-            // This uses 'Payment' type which IS subject to MRI (Revenue)
-            // Or 'Rent Charge' if it's just the charge? User said "upload ... + monthly rent", implying payment.
-            // If we record it as 'Payment', we assume it's paid.
             db.prepare(`
-                INSERT INTO transactions (tenant_id, type, amount, description, payment_method)
-                VALUES (?, 'Payment', ?, 'First Month Rent Payment', 'Cash/Transfer')
-            `).run(tenantId, Number(first_month_rent));
+                INSERT INTO transactions (id, tenant_id, type, amount, description, payment_method)
+                VALUES (?, ?, 'Payment', ?, 'First Month Rent Payment', 'Cash/Transfer')
+            `).run(generateUUID(), tenantId, Number(first_month_rent));
         }
 
         return tenantId;

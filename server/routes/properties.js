@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 
 // Get all properties with unit count
 router.get('/', (req, res) => {
@@ -16,9 +16,10 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
     const { name, address, total_units, type, annual_income_estimate, kra_pin } = req.body;
     try {
-        const stmt = db.prepare('INSERT INTO properties (name, address, total_units, type, annual_income_estimate, kra_pin) VALUES (?, ?, ?, ?, ?, ?)');
-        const info = stmt.run(name, address, total_units || 0, type || 'Residential', annual_income_estimate || 0, kra_pin || '');
-        res.json({ id: info.lastInsertRowid, ...req.body });
+        const id = generateUUID();
+        const stmt = db.prepare('INSERT INTO properties (id, name, address, total_units, type, annual_income_estimate, kra_pin) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        stmt.run(id, name, address, total_units || 0, type || 'Residential', annual_income_estimate || 0, kra_pin || '');
+        res.json({ id, ...req.body });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -63,12 +64,13 @@ router.post('/:id/houses', (req, res) => {
     const { house_number, type, rent_amount, amenities } = req.body;
     const property_id = req.params.id;
     try {
+        const houseId = generateUUID();
         const stmt = db.prepare(`
-      INSERT INTO houses (property_id, house_number, type, rent_amount, status, amenities)
-      VALUES (?, ?, ?, ?, 'Vacant', ?)
+      INSERT INTO houses (id, property_id, house_number, type, rent_amount, status, amenities)
+      VALUES (?, ?, ?, ?, ?, 'Vacant', ?)
     `);
-        const info = stmt.run(property_id, house_number, type, rent_amount, JSON.stringify(amenities || {}));
-        res.json({ id: info.lastInsertRowid, ...req.body });
+        stmt.run(houseId, property_id, house_number, type, rent_amount, JSON.stringify(amenities || {}));
+        res.json({ id: houseId, ...req.body });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

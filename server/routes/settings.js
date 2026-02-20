@@ -83,12 +83,17 @@ router.post('/clear', authorizeAdmin, (req, res) => {
             db.prepare('DELETE FROM houses').run();
             db.prepare('DELETE FROM properties').run();
 
-            // Optional: Reset settings to default
+            // Optional: Reset settings to default but PROTECT identity/security
+            const deviceId = db.prepare("SELECT value FROM settings WHERE key = 'device_id'").get()?.value;
+            const jwtSecret = db.prepare("SELECT value FROM settings WHERE key = 'jwt_secret'").get()?.value;
+
             db.prepare('DELETE FROM settings').run();
             const defaultSettings = [
                 { key: 'company_name', value: 'Rental Management System' },
                 { key: 'company_address', value: '123 Main St, City' },
-                { key: 'company_phone', value: '0700 000 000' }
+                { key: 'company_phone', value: '0700 000 000' },
+                { key: 'device_id', value: deviceId || 'MISSING' },
+                { key: 'jwt_secret', value: jwtSecret || 'MISSING' }
             ];
             const seedStmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
             defaultSettings.forEach(s => seedStmt.run(s.key, s.value));
@@ -141,6 +146,21 @@ router.post('/', (req, res) => {
     } catch (err) {
         console.error('SETTINGS UPDATE ERROR:', err);
         res.status(500).json({ message: `Database error while saving settings: ${err.message}` });
+    }
+});
+
+// Get Sync Info for pairing
+router.get('/sync-info', (req, res) => {
+    try {
+        const deviceId = db.prepare("SELECT value FROM settings WHERE key = 'device_id'").get()?.value;
+        const companyName = db.prepare("SELECT value FROM settings WHERE key = 'company_name'").get()?.value;
+        res.json({
+            device_id: deviceId,
+            company_name: companyName,
+            is_owner: true // For now, the one where pairing starts is owner
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 

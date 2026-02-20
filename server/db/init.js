@@ -214,7 +214,17 @@ async function migrateToUUID() {
       return;
     }
 
+    db.exec("PRAGMA foreign_keys = OFF");
+
     db.transaction(() => {
+      // 0. Clean up orphaned records to prevent NOT NULL constraint failures
+      console.log('Cleaning up orphaned records...');
+      db.exec("DELETE FROM transactions WHERE tenant_id NOT IN (SELECT id FROM tenants)");
+      db.exec("DELETE FROM maintenance_requests WHERE property_id IS NOT NULL AND property_id NOT IN (SELECT id FROM properties)");
+      db.exec("DELETE FROM maintenance_requests WHERE house_id NOT IN (SELECT id FROM houses)");
+      db.exec("DELETE FROM maintenance_expenses WHERE maintenance_id NOT IN (SELECT id FROM maintenance_requests)");
+      db.exec("DELETE FROM maintenance_logs WHERE maintenance_id NOT IN (SELECT id FROM maintenance_requests)");
+
       // 1. Create mapping table
       db.exec("CREATE TABLE IF NOT EXISTS _sync_mapping (table_name TEXT, old_id INTEGER, new_id TEXT, PRIMARY KEY (table_name, old_id))");
 
@@ -406,6 +416,7 @@ async function migrateToUUID() {
 
       // 4. Cleanup mapping table
       db.exec("DROP TABLE _sync_mapping");
+      db.exec("PRAGMA foreign_keys = ON");
       console.log('UUID migration completed successfully.');
     })();
   } catch (err) {

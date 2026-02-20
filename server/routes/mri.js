@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/init');
+const { db, generateUUID } = require('../db/init');
 const { authorizeAdmin } = require('../middleware/auth');
 
 router.use(authorizeAdmin);
@@ -124,9 +124,9 @@ router.post('/calculate', (req, res) => {
             `).run(totalCollected, taxPayable, netIncome, status, referenceDate, existing.id);
         } else {
             db.prepare(`
-                INSERT INTO mri_records (month, reference_date, gross_rent, tax_payable, net_income, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `).run(monthLabel, referenceDate, totalCollected, taxPayable, netIncome, status);
+                INSERT INTO mri_records (id, month, reference_date, gross_rent, tax_payable, net_income, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(generateUUID(), monthLabel, referenceDate, totalCollected, taxPayable, netIncome, status);
         }
 
         res.json({ success: true, month: monthLabel, reference_date: referenceDate, gross_rent: totalCollected, tax_payable: taxPayable, status });

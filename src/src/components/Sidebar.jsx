@@ -14,6 +14,7 @@ const navigation = [
     { name: 'MRI Tax', href: '/mri', icon: 'bx-receipt', restricted: true },
     { name: 'Reports', href: '/reports', icon: 'bx-stats', restricted: true },
     { name: 'System Users', href: '/users', icon: 'bx-group', restricted: true },
+    { name: 'Synchronization', href: '/sync', icon: 'bx-sync', restricted: false },
     { name: 'Settings', href: '/settings', icon: 'bx-cog', restricted: false },
 ];
 
