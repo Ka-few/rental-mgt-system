@@ -33,13 +33,32 @@ router.get('/', (req, res) => {
         const genExp = db.prepare("SELECT SUM(amount) as total FROM expenses").get();
         const totalExp = genExp.total || 0;
 
+        // 7. Maintenance Stats
+        const openMaintenance = db.prepare("SELECT count(*) as count FROM maintenance_requests WHERE status NOT IN ('Completed', 'Rejected')").get();
+        const urgentMaintenance = db.prepare("SELECT count(*) as count FROM maintenance_requests WHERE priority IN ('High', 'Critical') AND status NOT IN ('Completed', 'Rejected')").get();
+
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const maintenanceCost = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Completed' AND completed_date LIKE '${currentMonth}%'`).get();
+
+        const avgResolution = db.prepare(`
+            SELECT AVG(julianday(completed_date) - julianday(reported_date)) as avgDays 
+            FROM maintenance_requests 
+            WHERE status = 'Completed' AND completed_date IS NOT NULL
+        `).get();
+
         res.json({
             totalTenants: tenants.count,
             occupiedUnits: occupiedCount,
             vacantUnits: vacantCount,
             totalArrears: arrearsData.totalArrears || 0,
             totalRevenue: revenue.total || 0,
-            totalExpenses: totalExp
+            totalExpenses: totalExp,
+            maintenance: {
+                openIssues: openMaintenance.count,
+                urgentIssues: urgentMaintenance.count,
+                monthlyCost: maintenanceCost.total || 0,
+                avgResolutionDays: Math.round((avgResolution.avgDays || 0) * 10) / 10
+            }
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

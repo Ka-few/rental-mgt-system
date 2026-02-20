@@ -9,6 +9,7 @@ const navigation = [
     { name: 'Tenants', href: '/tenants', icon: 'bx-user', restricted: false },
     { name: 'Properties', href: '/properties', icon: 'bx-building-house', restricted: false },
     { name: 'Finance', href: '/finance', icon: 'bx-money', restricted: false },
+    { name: 'Maintenance', href: '/maintenance', icon: 'bx-wrench', restricted: false },
     { name: 'Expenditures', href: '/expenses', icon: 'bx-wallet', restricted: false },
     { name: 'MRI Tax', href: '/mri', icon: 'bx-receipt', restricted: true },
     { name: 'Reports', href: '/reports', icon: 'bx-stats', restricted: true },
@@ -55,6 +56,9 @@ export default function Sidebar() {
                     if (item.name === 'Properties' && userRole !== 'admin') return null;
                     if (item.name === 'Settings' && userRole !== 'admin') return null;
                     if (item.name === 'System Users' && userRole !== 'admin') return null;
+                    if (item.name === 'Reports' && userRole !== 'admin') return null;
+                    if (item.name === 'MRI Tax' && userRole !== 'admin') return null;
+                    if (item.name === 'Expenditures' && userRole !== 'admin') return null;
 
                     return (
                         <li key={item.name}>

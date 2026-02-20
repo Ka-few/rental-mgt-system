@@ -10,6 +10,7 @@ import MRIReports from './pages/MRIReports';
 import Settings from './pages/Settings';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
+import Maintenance from './pages/Maintenance';
 
 import Login from './pages/Login';
 import { AuthProvider } from './context/AuthContext';
@@ -67,15 +68,20 @@ function App() {
                       {/* Unrestricted Routes */}
                       <Route path="tenants" element={<Tenants />} />
                       <Route path="finance" element={<Finance />} />
-                      <Route path="expenses" element={<Expenses />} />
-                      <Route path="properties" element={<Properties />} />
-                      <Route path="settings" element={<Settings />} />
+                      <Route path="maintenance" element={<Maintenance />} />
 
-                      {/* Restricted Routes (Trial) */}
-                      <Route element={<LicenseRoute restricted={true} />}>
-                        <Route path="mri" element={<MRIReports />} />
-                        <Route path="reports" element={<Reports />} />
-                        <Route path="users" element={<Users />} />
+                      {/* Restricted Routes (Admin Only) */}
+                      <Route element={<PrivateRoute adminOnly={true} />}>
+                        <Route path="properties" element={<Properties />} />
+                        <Route path="settings" element={<Settings />} />
+                        <Route path="expenses" element={<Expenses />} />
+
+                        {/* Restricted Routes (Trial & Admin Only) */}
+                        <Route element={<LicenseRoute restricted={true} />}>
+                          <Route path="mri" element={<MRIReports />} />
+                          <Route path="reports" element={<Reports />} />
+                          <Route path="users" element={<Users />} />
+                        </Route>
                       </Route>
 
                     </Route>

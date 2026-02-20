@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db/init');
+const { authorizeAdmin } = require('../middleware/auth');
+
+router.use(authorizeAdmin);
 
 // Financial Report
 router.get('/financial', (req, res) => {

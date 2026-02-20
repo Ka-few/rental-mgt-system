@@ -8,9 +8,14 @@ export default function Dashboard() {
         totalTenants: 0,
         occupiedUnits: 0,
         vacantUnits: 0,
-        totalArrears: 0,
         totalRevenue: 0,
-        totalExpenses: 0
+        totalExpenses: 0,
+        maintenance: {
+            openIssues: 0,
+            urgentIssues: 0,
+            monthlyCost: 0,
+            avgResolutionDays: 0
+        }
     });
     const [revenueData, setRevenueData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -92,6 +97,32 @@ export default function Dashboard() {
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
                     <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-rose-500 transition-colors">Total Expenses</h3>
                     <p className="text-3xl font-black text-rose-500">KES {stats.totalExpenses?.toLocaleString()}</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-blue-500 transition-colors">Open Maintenance</h3>
+                    <p className="text-3xl font-black text-slate-800">{stats.maintenance?.openIssues || 0}</p>
+                    <div className="text-[10px] text-rose-500 font-bold mt-1">{stats.maintenance?.urgentIssues || 0} Urgent</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-emerald-500 transition-colors">Maintenance Cost (MTD)</h3>
+                    <p className="text-3xl font-black text-slate-800">KES {stats.maintenance?.monthlyCost?.toLocaleString() || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                    <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-indigo-500 transition-colors">Avg Resolution</h3>
+                    <p className="text-3xl font-black text-slate-800">{stats.maintenance?.avgResolutionDays || 0} <span className="text-sm text-gray-400">Days</span></p>
+                </div>
+                <div className="bg-blue-600 p-6 rounded-2xl shadow-lg shadow-blue-100 group transition-transform hover:scale-[1.02] cursor-pointer" onClick={() => window.location.hash = '/maintenance'}>
+                    <div className="flex justify-between items-start">
+                        <h3 className="text-blue-200 text-[10px] font-black uppercase tracking-widest mb-1">Quick Action</h3>
+                        <i className='bx bx-wrench text-blue-300 text-xl'></i>
+                    </div>
+                    <p className="text-lg font-black text-white">Manage Maintenance</p>
+                    <div className="text-[10px] text-blue-200 font-bold mt-2 flex items-center gap-1">
+                        Go to module <i className='bx bx-right-arrow-alt'></i>
+                    </div>
                 </div>
             </div>
 

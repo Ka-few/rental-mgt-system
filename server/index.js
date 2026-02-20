@@ -71,6 +71,7 @@ app.use('/api/mri', require('./routes/mri'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/help', require('./routes/help'));
 app.use('/api/expenses', require('./routes/expenses'));
+app.use('/api/maintenance', require('./routes/maintenance'));
 
 // Basic Route
 app.get('/api/status', (req, res) => {
