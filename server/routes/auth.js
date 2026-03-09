@@ -43,6 +43,10 @@ router.post('/change-password', authenticate, (req, res) => {
         return res.status(400).json({ message: 'Current and new passwords are required' });
     }
 
+    if (newPassword.length < 6) {
+        return res.status(400).json({ message: 'New password must be at least 6 characters long' });
+    }
+
     const userId = req.user.id;
 
     try {
@@ -62,7 +66,7 @@ router.post('/change-password', authenticate, (req, res) => {
         res.json({ message: 'Password successfully updated' });
     } catch (err) {
         console.error('Password change error:', err);
-        res.status(500).json({ message: 'Server error pulse password change' });
+        res.status(500).json({ message: 'Server error during password change' });
     }
 });
 
@@ -83,6 +87,10 @@ router.post('/register', authenticate, authorizeAdmin, (req, res) => {
     const { username, password, role } = req.body;
     if (!username || !password) {
         return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
 
     try {

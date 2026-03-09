@@ -156,8 +156,12 @@ router.put('/:id/status', (req, res) => {
     const { id } = req.params;
     const performed_by = req.user.id;
 
-    if (!['Open', 'In Progress', 'Rejected'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status update' });
+    const validStatuses = req.user.role === 'admin'
+        ? ['Open', 'In Progress', 'Rejected']
+        : ['Open', 'In Progress']; // Staff can only move to Open / In Progress
+
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: 'Invalid status update or insufficient permissions' });
     }
 
     try {
@@ -188,10 +192,10 @@ router.post('/:id/expense', upload.single('receipt'), (req, res) => {
                 VALUES (?, ?, ?, ?, ?)
             `).run(generateUUID(), id, amount, description, receipt_path);
 
-            // Update maintenance_requests status and receipt path
+            // Update maintenance_requests status and receipt path, accumulate cost
             db.prepare(`
                 UPDATE maintenance_requests 
-                SET status = 'Pending Approval', receipt_image_path = ?, cost = ? 
+                SET status = 'Pending Approval', receipt_image_path = ?, cost = COALESCE(cost, 0) + ? 
                 WHERE id = ?
             `).run(receipt_path, amount, id);
 
@@ -256,13 +260,19 @@ router.post('/:id/reject', (req, res) => {
     }
 
     try {
+        const request = db.prepare('SELECT id, status FROM maintenance_requests WHERE id = ?').get(id);
+        if (!request) return res.status(404).json({ error: 'Maintenance request not found' });
+        if (request.status !== 'Pending Approval') {
+            return res.status(400).json({ error: 'Only requests pending approval can be rejected' });
+        }
+
         db.prepare(`
             UPDATE maintenance_requests 
             SET status = 'In Progress', rejection_note = ? 
             WHERE id = ?
         `).run(rejection_note, id);
 
-        logAction(id, 'Rejected. Status returned to In Progress.', performed_by);
+        logAction(id, `Rejected. Reason: ${rejection_note || 'None'}. Status returned to In Progress.`, performed_by);
         res.json({ message: 'Request rejected. Returned to caretaker.' });
     } catch (err) {
         res.status(500).json({ error: err.message });

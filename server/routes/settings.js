@@ -69,16 +69,26 @@ router.post('/clear', authorizeAdmin, (req, res) => {
     try {
         const tables = [
             'transactions',
+            'maintenance_logs',
+            'maintenance_expenses',
+            'maintenance_requests',
+            'mri_records',
+            'expenses',
+            'user_help_progress',
             'tenants',
             'houses',
-            'properties',
-            'expenses'
+            'properties'
         ];
 
         const transaction = db.transaction(() => {
-            // Delete data in order
+            // Delete data in order (child -> parent)
             db.prepare('DELETE FROM transactions').run();
+            db.prepare('DELETE FROM maintenance_logs').run();
+            db.prepare('DELETE FROM maintenance_expenses').run();
+            db.prepare('DELETE FROM maintenance_requests').run();
+            db.prepare('DELETE FROM mri_records').run();
             db.prepare('DELETE FROM expenses').run();
+            db.prepare('DELETE FROM user_help_progress').run();
             db.prepare('DELETE FROM tenants').run();
             db.prepare('DELETE FROM houses').run();
             db.prepare('DELETE FROM properties').run();
@@ -98,8 +108,8 @@ router.post('/clear', authorizeAdmin, (req, res) => {
             const seedStmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
             defaultSettings.forEach(s => seedStmt.run(s.key, s.value));
 
-            // Reset autoincrement
-            db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'tenants', 'houses', 'properties', 'expenses', 'settings')").run();
+            // Reset autoincrement (not strictly necessary for TEXT PKs, but safe)
+            db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'maintenance_logs', 'maintenance_expenses', 'maintenance_requests', 'mri_records', 'expenses', 'user_help_progress', 'tenants', 'houses', 'properties', 'settings')").run();
         });
 
         transaction();

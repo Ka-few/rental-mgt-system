@@ -242,7 +242,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
-    national_id TEXT UNIQUE NOT NULL CHECK(length(national_id) = 8),
+    national_id TEXT NOT NULL CHECK(length(national_id) = 8),
     phone TEXT NOT NULL,
     email TEXT,
     house_id TEXT,
@@ -520,20 +520,30 @@ function migrate() {
         db.prepare("ALTER TABLE transactions RENAME TO transactions_old").run();
         db.prepare(`
               CREATE TABLE transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL,
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
                 type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
                 amount REAL NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 description TEXT,
                 payment_method TEXT,
                 reference_code TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
               )
             `).run();
         const oldData = db.prepare("SELECT * FROM transactions_old").all();
-        const insertStmt = db.prepare("INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        oldData.forEach(row => insertStmt.run(...Object.values(row)));
+        const insertStmt = db.prepare("INSERT INTO transactions (id, tenant_id, type, amount, date, description, payment_method, reference_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        oldData.forEach(row => insertStmt.run(
+          row.id ? String(row.id) : generateUUID(),
+          String(row.tenant_id),
+          row.type,
+          row.amount,
+          row.date,
+          row.description,
+          row.payment_method,
+          row.reference_code
+        ));
         db.prepare("DROP TABLE transactions_old").run();
       });
       migrateTransactions();
@@ -561,36 +571,42 @@ function migrate() {
         `).run();
     }
 
-    // Check if status constraint needs expansion
+    // Check if status constraint needs expansion OR if id type needs to be TEXT
     const mrTableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='maintenance_requests'").get();
-    if (mrTableInfo && !mrTableInfo.sql.includes("'Pending Approval'")) {
+    const mrNeedsMigration = mrTableInfo && (
+      !mrTableInfo.sql.includes("'Pending Approval'")
+      || mrTableInfo.sql.includes('id INTEGER')
+    );
+    if (mrNeedsMigration) {
       console.log("Updating maintenance_requests status constraints...");
+      db.prepare("PRAGMA foreign_keys = OFF").run();
       db.transaction(() => {
         db.prepare("ALTER TABLE maintenance_requests RENAME TO maintenance_requests_old").run();
         db.prepare(`
                 CREATE TABLE maintenance_requests (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    property_id INTEGER,
-                    house_id INTEGER NOT NULL,
+                    id TEXT PRIMARY KEY,
+                    property_id TEXT,
+                    house_id TEXT NOT NULL,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL,
                     priority TEXT DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
                     status TEXT DEFAULT 'Open' CHECK(status IN ('Open', 'In Progress', 'Pending Approval', 'Completed', 'Rejected')),
                     issue_image_path TEXT,
                     receipt_image_path TEXT,
-                    approved_by_user_id INTEGER,
+                    approved_by_user_id TEXT,
                     approved_at DATETIME,
                     rejection_note TEXT,
                     cost REAL DEFAULT 0,
                     reported_date DATETIME DEFAULT CURRENT_TIMESTAMP,
                     completed_date DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
                     FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
                     FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL
                 )
             `).run();
 
-        // Map old columns to new
+        // Map old columns to new, converting 'Closed' -> 'Completed' and integer ids to UUID strings
         const oldData = db.prepare("SELECT * FROM maintenance_requests_old").all();
         const insertStmt = db.prepare(`
                 INSERT INTO maintenance_requests (
@@ -599,27 +615,32 @@ function migrate() {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
+        const validStatuses = ['Open', 'In Progress', 'Pending Approval', 'Completed', 'Rejected'];
         oldData.forEach(row => {
+          // Map legacy statuses to valid ones
+          let status = row.status;
+          if (!validStatuses.includes(status)) status = 'Completed';
           insertStmt.run(
-            row.id,
-            row.house_id,
+            row.id ? String(row.id) : generateUUID(),
+            String(row.house_id),
             row.description,
             row.priority,
-            row.status,
+            status,
             row.cost,
             row.reported_date,
             row.completed_date,
-            row.property_id || null,
+            row.property_id ? String(row.property_id) : null,
             row.title || 'Untitled Issue',
             row.issue_image_path || null,
             row.receipt_image_path || null,
-            row.approved_by_user_id || null,
+            row.approved_by_user_id ? String(row.approved_by_user_id) : null,
             row.approved_at || null,
             row.rejection_note || null
           );
         });
         db.prepare("DROP TABLE maintenance_requests_old").run();
       })();
+      db.prepare("PRAGMA foreign_keys = ON").run();
     }
 
     // New Maintenance Tables
@@ -648,7 +669,67 @@ function migrate() {
     const expensesColumns = db.prepare("PRAGMA table_info(expenses)").all();
     if (!expensesColumns.map(c => c.name).includes('reference_id')) {
       console.log("Adding reference_id to expenses...");
-      db.prepare("ALTER TABLE expenses ADD COLUMN reference_id INTEGER").run();
+      db.prepare("ALTER TABLE expenses ADD COLUMN reference_id TEXT").run();
+    }
+
+    // Migration: Convert primary keys from INTEGER to TEXT (UUID) for core tables
+    // This handles upgrading from older installs where tables used INTEGER PK
+    const propertiesTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='properties'").get();
+    if (propertiesTableDef && propertiesTableDef.sql.includes('id INTEGER')) {
+      console.log('Migrating properties table to TEXT primary keys (UUID compatibility)...');
+      db.transaction(() => {
+        db.prepare("PRAGMA foreign_keys = OFF").run();
+        // properties
+        db.prepare("ALTER TABLE properties RENAME TO properties_old").run();
+        db.prepare(`CREATE TABLE properties (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          address TEXT,
+          type TEXT DEFAULT 'Residential' CHECK(type IN ('Residential', 'Commercial')),
+          annual_income_estimate REAL DEFAULT 0,
+          kra_pin TEXT,
+          total_units INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`).run();
+        const props = db.prepare("SELECT * FROM properties_old").all();
+        const insertProp = db.prepare("INSERT INTO properties (id, name, address, type, annual_income_estimate, kra_pin, total_units, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        props.forEach(p => insertProp.run(String(p.id), p.name, p.address, p.type, p.annual_income_estimate, p.kra_pin, p.total_units, p.created_at));
+        db.prepare("DROP TABLE properties_old").run();
+        db.prepare("PRAGMA foreign_keys = ON").run();
+      })();
+      console.log('Properties table migrated to TEXT primary keys.');
+    }
+
+    // Migration: Remove UNIQUE constraint from tenants.national_id
+    const tenantsTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tenants'").get();
+    if (tenantsTableDef && tenantsTableDef.sql.includes('national_id TEXT UNIQUE')) {
+      console.log('Removing UNIQUE constraint from tenants.national_id...');
+      db.transaction(() => {
+        db.prepare("PRAGMA foreign_keys = OFF").run();
+        db.prepare("ALTER TABLE tenants RENAME TO tenants_old").run();
+        db.prepare(`
+          CREATE TABLE tenants (
+            id TEXT PRIMARY KEY,
+            full_name TEXT NOT NULL,
+            national_id TEXT NOT NULL CHECK(length(national_id) = 8),
+            phone TEXT NOT NULL,
+            email TEXT,
+            house_id TEXT,
+            status TEXT DEFAULT 'Active' CHECK(status IN ('Active', 'Vacated', 'Arrears')),
+            move_in_date DATE,
+            agreement_path TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE SET NULL
+          )
+        `).run();
+        db.prepare(`
+          INSERT INTO tenants (id, full_name, national_id, phone, email, house_id, status, move_in_date, agreement_path, created_at)
+          SELECT id, full_name, national_id, phone, email, house_id, status, move_in_date, agreement_path, created_at FROM tenants_old
+        `).run();
+        db.prepare("DROP TABLE tenants_old").run();
+        db.prepare("PRAGMA foreign_keys = ON").run();
+      })();
+      console.log('Updated tenants table to allow non-unique national_id.');
     }
 
     console.log('Migrations checked/applied.');

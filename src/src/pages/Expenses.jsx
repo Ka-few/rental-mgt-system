@@ -4,6 +4,36 @@ import { getProperties } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
 
+// ─── Shared category list ─────────────────────────────────────────────────────
+// Changing this list automatically updates the filter dropdown, the add-form
+// dropdown, and the badge colour map in the table.
+const EXPENSE_CATEGORIES = [
+    'Utilities',
+    'Maintenance',
+    'Security',
+    'Repairs',
+    'Cleaning',
+    'Insurance',
+    'Admin',
+    'Staff Wages',
+    'Taxes',
+    'Other',
+];
+
+const CATEGORY_COLORS = {
+    Utilities: 'bg-blue-100 text-blue-700',
+    Maintenance: 'bg-orange-100 text-orange-700',
+    Security: 'bg-purple-100 text-purple-700',
+    Repairs: 'bg-yellow-100 text-yellow-700',
+    Cleaning: 'bg-teal-100 text-teal-700',
+    Insurance: 'bg-indigo-100 text-indigo-700',
+    Admin: 'bg-slate-100 text-slate-700',
+    'Staff Wages': 'bg-pink-100 text-pink-700',
+    Taxes: 'bg-red-100 text-red-700',
+    Other: 'bg-gray-100 text-gray-700',
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function Expenses() {
     const toast = useToast();
     const [expenses, setExpenses] = useState([]);
@@ -27,7 +57,7 @@ export default function Expenses() {
 
     const [form, setForm] = useState({
         property_id: '',
-        category: 'Utilities',
+        category: EXPENSE_CATEGORIES[0],
         amount: '',
         date: new Date().toISOString().split('T')[0],
         description: '',
@@ -62,7 +92,7 @@ export default function Expenses() {
             setIsAddModalOpen(false);
             setForm({
                 property_id: '',
-                category: 'Utilities',
+                category: EXPENSE_CATEGORIES[0],
                 amount: '',
                 date: new Date().toISOString().split('T')[0],
                 description: '',
@@ -128,12 +158,9 @@ export default function Expenses() {
                         onChange={(e) => setFilterCategory(e.target.value)}
                     >
                         <option value="all">All Categories</option>
-                        <option>Utilities</option>
-                        <option>Security</option>
-                        <option>Maintenance</option>
-                        <option>Admin</option>
-                        <option>Taxes</option>
-                        <option>Other</option>
+                        {EXPENSE_CATEGORIES.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
                     </select>
                 </div>
                 <div className="w-48">
@@ -167,12 +194,7 @@ export default function Expenses() {
                             <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4 text-sm whitespace-nowrap">{new Date(exp.date).toLocaleDateString()}</td>
                                 <td className="px-6 py-4 font-medium">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${exp.category === 'Utilities' ? 'bg-blue-100 text-blue-700' :
-                                        exp.category === 'Security' ? 'bg-purple-100 text-purple-700' :
-                                            exp.category === 'Maintenance' ? 'bg-orange-100 text-orange-700' :
-                                                exp.category === 'Taxes' ? 'bg-red-100 text-red-700' :
-                                                    'bg-gray-100 text-gray-700'
-                                        }`}>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${CATEGORY_COLORS[exp.category] || CATEGORY_COLORS['Other']}`}>
                                         {exp.category}
                                     </span>
                                 </td>
@@ -230,12 +252,9 @@ export default function Expenses() {
                                         value={form.category}
                                         onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
                                     >
-                                        <option>Utilities</option>
-                                        <option>Security</option>
-                                        <option>Maintenance</option>
-                                        <option>Admin</option>
-                                        <option>Taxes</option>
-                                        <option>Other</option>
+                                        {EXPENSE_CATEGORIES.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>

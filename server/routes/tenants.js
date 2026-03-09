@@ -56,9 +56,6 @@ router.post('/', upload.single('agreement'), (req, res) => {
     // We expect: full_name, national_id, phone, email, house_id, move_in_date
     // Plus: initial_deposit, first_month_rent
 
-    //console.log("Req Body:", req.body);
-    //console.log("Req File:", req.file);
-
     let { full_name, national_id, phone, email, house_id, move_in_date, initial_deposit, first_month_rent } = req.body;
     const agreementPath = req.file ? req.file.filename : null;
 
@@ -67,10 +64,21 @@ router.post('/', upload.single('agreement'), (req, res) => {
         house_id = null;
     }
 
-    console.log(`Registering tenant: ${full_name} (${national_id}), House: ${house_id}`);
-
+    // National ID validation
     if (!national_id || national_id.length !== 8) {
         return res.status(400).json({ error: 'National ID must be 8 digits' });
+    }
+
+    // Name consistency check for shared National IDs
+    try {
+        const existingTenant = db.prepare('SELECT full_name FROM tenants WHERE national_id = ? LIMIT 1').get(national_id);
+        if (existingTenant && existingTenant.full_name.trim().toLowerCase() !== full_name.trim().toLowerCase()) {
+            return res.status(400).json({
+                error: `National ID ${national_id} is already registered to "${existingTenant.full_name}". Names must match exactly for the same National ID.`
+            });
+        }
+    } catch (err) {
+        console.error('CONSISTENCY CHECK ERROR:', err);
     }
 
     const insert = db.transaction(() => {
@@ -143,6 +151,22 @@ router.put('/:id', upload.single('agreement'), (req, res) => {
 
         if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
+        // Name consistency check for updates
+        if (full_name || national_id) {
+            const tenantObj = db.prepare('SELECT full_name, national_id FROM tenants WHERE id = ?').get(id);
+            const checkId = national_id || (tenantObj ? tenantObj.national_id : null);
+            const checkName = full_name || (tenantObj ? tenantObj.full_name : null);
+
+            if (checkId && checkName) {
+                const otherTenant = db.prepare('SELECT full_name FROM tenants WHERE national_id = ? AND id != ? LIMIT 1').get(checkId, id);
+                if (otherTenant && otherTenant.full_name.trim().toLowerCase() !== checkName.trim().toLowerCase()) {
+                    return res.status(400).json({
+                        error: `National ID ${checkId} is already associated with name "${otherTenant.full_name}". Update aborted to maintain consistency.`
+                    });
+                }
+            }
+        }
+
         const updateTransaction = db.transaction(() => {
             // If house_id is changing, handle status updates
             if (house_id !== undefined) {
@@ -159,6 +183,14 @@ router.put('/:id', upload.single('agreement'), (req, res) => {
                     if (house_id) {
                         db.prepare("UPDATE houses SET status = 'Occupied' WHERE id = ?").run(house_id);
                     }
+                }
+            }
+
+            // If status is being set to Inactive, vacate the tenant's current house
+            if (status === 'Inactive') {
+                const currentTenant = db.prepare('SELECT house_id FROM tenants WHERE id = ?').get(id);
+                if (currentTenant && currentTenant.house_id) {
+                    db.prepare("UPDATE houses SET status = 'Vacant' WHERE id = ?").run(currentTenant.house_id);
                 }
             }
 
@@ -183,21 +215,17 @@ router.put('/:id', upload.single('agreement'), (req, res) => {
 // Delete Tenant
 router.delete('/:id', (req, res) => {
     const { id } = req.params;
-    console.log(`DELETE REQUEST: Attempting to delete tenant with ID: ${id}`);
     try {
         const tenant = db.prepare('SELECT id, full_name, house_id FROM tenants WHERE id = ?').get(id);
 
         if (!tenant) {
-            console.error(`DELETE ERROR: Tenant with ID ${id} not found in database.`);
             return res.status(404).json({ error: 'Tenant not found' });
         }
 
-        console.log(`DELETE: Found tenant ${tenant.full_name}. Proceeding with deletion...`);
         const stmt = db.prepare('DELETE FROM tenants WHERE id = ?');
         const info = stmt.run(id);
 
         if (info.changes === 0) {
-            console.error(`DELETE ERROR: No changes made when deleting ID ${id}`);
             return res.status(404).json({ error: 'Tenant not found' });
         }
 

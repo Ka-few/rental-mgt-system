@@ -15,6 +15,9 @@ router.get('/tenant/:id', (req, res) => {
 // Record a Payment
 router.post('/payment', (req, res) => {
     const { tenant_id, amount, description, payment_method, reference_code, date } = req.body;
+    if (!tenant_id || !amount || Number(amount) <= 0) {
+        return res.status(400).json({ error: 'Tenant ID and a valid amount are required' });
+    }
     try {
         const id = generateUUID();
         const stmt = db.prepare(`
@@ -31,6 +34,9 @@ router.post('/payment', (req, res) => {
 // Add a Charge (Rent, Water, etc)
 router.post('/charge', (req, res) => {
     const { tenant_id, type, amount, description } = req.body;
+    if (!tenant_id || !type || !amount || Number(amount) <= 0) {
+        return res.status(400).json({ error: 'Tenant ID, charge type, and a valid amount are required' });
+    }
     try {
         const id = generateUUID();
         const stmt = db.prepare(`
@@ -47,6 +53,24 @@ router.post('/charge', (req, res) => {
 // Monthly Rent Run (Charge all active tenants)
 router.post('/rent-run', (req, res) => {
     try {
+        const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+        const description = `Monthly Rent - ${month}`;
+
+        // ── Deduplication guard ───────────────────────────────────────────────
+        // Check whether a Rent Charge for this month has already been run.
+        const alreadyRun = db.prepare(`
+            SELECT COUNT(*) as cnt FROM transactions
+            WHERE type = 'Rent Charge' AND description = ?
+        `).get(description);
+
+        if (alreadyRun.cnt > 0) {
+            return res.status(409).json({
+                message: `Rent run for ${month} has already been posted. Running it again would double-charge all tenants.`,
+                alreadyRun: true
+            });
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         const activeTenants = db.prepare(`
             SELECT t.id, h.rent_amount 
             FROM tenants t 
@@ -60,8 +84,6 @@ router.post('/rent-run', (req, res) => {
         `);
 
         const date = new Date().toISOString();
-        const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-        const description = `Monthly Rent - ${month}`;
 
         const transaction = db.transaction((tenants) => {
             for (const tenant of tenants) {

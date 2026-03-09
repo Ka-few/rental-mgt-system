@@ -38,7 +38,7 @@ router.get('/', (req, res) => {
         const urgentMaintenance = db.prepare("SELECT count(*) as count FROM maintenance_requests WHERE priority IN ('High', 'Critical') AND status NOT IN ('Completed', 'Rejected')").get();
 
         const currentMonth = new Date().toISOString().slice(0, 7);
-        const maintenanceCost = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Completed' AND completed_date LIKE '${currentMonth}%'`).get();
+        const maintenanceCost = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Completed' AND strftime('%Y-%m', completed_date) = ?`).get(currentMonth);
 
         const avgResolution = db.prepare(`
             SELECT AVG(julianday(completed_date) - julianday(reported_date)) as avgDays 
@@ -82,8 +82,8 @@ router.get('/charts', (req, res) => {
             const revenue = db.prepare(`
                 SELECT SUM(amount) as total 
                 FROM transactions 
-                WHERE type = 'Payment' AND date LIKE '${m.yearMonth}%'
-            `).get();
+                WHERE type = 'Payment' AND strftime('%Y-%m', date) = ?
+            `).get(m.yearMonth);
 
             return {
                 month: m.label,

@@ -87,7 +87,7 @@ function startServer() {
       DB_PATH: dbPath,
       UPLOADS_PATH: uploadsPath,
       NODE_ENV: isDev ? 'development' : 'production',
-      JWT_SECRET: process.env.JWT_SECRET || 'rental-mgt-secret-prod-2026'
+      JWT_SECRET: process.env.JWT_SECRET
     },
     stdio: ['inherit', 'pipe', 'pipe', 'ipc']
   });

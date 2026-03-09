@@ -110,8 +110,6 @@ const Settings = () => {
     const onUpdatePassword = async (e) => {
         e.preventDefault();
 
-        console.log('Form submission started');
-
         if (pwdForm.newPassword !== pwdForm.confirmPassword) {
             return toast.error('New passwords do not match');
         }
@@ -120,12 +118,10 @@ const Settings = () => {
         }
 
         try {
-            console.log('Calling changePassword service...');
             const result = await changePassword({
                 currentPassword: pwdForm.currentPassword,
                 newPassword: pwdForm.newPassword
             });
-            console.log('Password change success:', result);
             toast.success('Password updated successfully!');
             setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
         } catch (err) {

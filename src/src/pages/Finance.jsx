@@ -480,7 +480,7 @@ export default function Finance() {
             toast.success(res.message || 'Monthly rent generated successfully!');
             loadData();
         } catch (err) {
-            toast.error(err.response?.data?.message || err.message || 'Failed to generate rent');
+            toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to generate rent');
         }
     };
 
