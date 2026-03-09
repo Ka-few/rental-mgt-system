@@ -58,8 +58,6 @@ app.use('/uploads', express.static(uploadsPath, {
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/license', require('./routes/license'));
-app.use('/api/sync', require('./routes/sync'));
-
 // Protect all following routes
 app.use(authenticate);
 

@@ -11,8 +11,6 @@ import Settings from './pages/Settings';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
 import Maintenance from './pages/Maintenance';
-import Synchronization from './pages/Synchronization';
-import syncService from './services/syncService';
 import { useEffect } from 'react';
 
 import Login from './pages/Login';
@@ -57,33 +55,6 @@ function App() {
 }
 
 function Root() {
-  useEffect(() => {
-    // 3 Hour Auto-Sync Scheduler
-    const SYNC_INTERVAL = 3 * 60 * 60 * 1000;
-
-    const runSync = async () => {
-      try {
-        const info = await syncService.getSyncInfo();
-        if (info.is_registered) {
-          console.log('[AutoSync] Starting background synchronization...');
-          await syncService.syncNow();
-          console.log('[AutoSync] Success.');
-        }
-      } catch (err) {
-        console.warn('[AutoSync] Background sync failed or not configured:', err.message);
-      }
-    };
-
-    const interval = setInterval(runSync, SYNC_INTERVAL);
-    // Optional: Initial sync after 1 minute of app start
-    const initialTimeout = setTimeout(runSync, 60 * 1000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(initialTimeout);
-    };
-  }, []);
-
   return (
     <Router>
       <ToastProvider>
@@ -117,8 +88,6 @@ function Root() {
                           <Route path="users" element={<Users />} />
                         </Route>
                       </Route>
-
-                      <Route path="sync" element={<Synchronization />} />
 
                     </Route>
                   </Route>

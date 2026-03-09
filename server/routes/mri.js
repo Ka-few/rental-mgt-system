@@ -113,6 +113,8 @@ router.post('/calculate', (req, res) => {
         // Save record (INSERT OR REPLACE if we want to allow re-calculation for pending months)
         // Check if record for this month already exists
         const existing = db.prepare('SELECT id, status FROM mri_records WHERE month = ?').get(monthLabel);
+        let recordId;
+
         if (existing) {
             if (existing.status === 'Filed') {
                 return res.status(403).json({ error: 'Record for this month is already filed and locked.' });
@@ -122,14 +124,17 @@ router.post('/calculate', (req, res) => {
                 SET gross_rent = ?, tax_payable = ?, net_income = ?, status = ?, reference_date = ?
                 WHERE id = ?
             `).run(totalCollected, taxPayable, netIncome, status, referenceDate, existing.id);
+            recordId = existing.id;
         } else {
-            db.prepare(`
+            const insertStmt = db.prepare(`
                 INSERT INTO mri_records (id, month, reference_date, gross_rent, tax_payable, net_income, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(generateUUID(), monthLabel, referenceDate, totalCollected, taxPayable, netIncome, status);
+            `);
+            recordId = generateUUID();
+            insertStmt.run(recordId, monthLabel, referenceDate, totalCollected, taxPayable, netIncome, status);
         }
 
-        res.json({ success: true, month: monthLabel, reference_date: referenceDate, gross_rent: totalCollected, tax_payable: taxPayable, status });
+        res.json({ success: true, id: recordId, month: monthLabel, reference_date: referenceDate, gross_rent: totalCollected, tax_payable: taxPayable, status });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

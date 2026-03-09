@@ -17,8 +17,11 @@ router.post('/', (req, res) => {
     const { name, address, total_units, type, annual_income_estimate, kra_pin } = req.body;
     try {
         const id = generateUUID();
-        const stmt = db.prepare('INSERT INTO properties (id, name, address, total_units, type, annual_income_estimate, kra_pin) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        stmt.run(id, name, address, total_units || 0, type || 'Residential', annual_income_estimate || 0, kra_pin || '');
+        const stmt = db.prepare(`
+            INSERT INTO properties (id, name, address, type, annual_income_estimate, kra_pin, total_units)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        stmt.run(id, name, address, type || 'Residential', Number(annual_income_estimate) || 0, kra_pin || '', Number(total_units) || 0);
         res.json({ id, ...req.body });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -66,10 +69,11 @@ router.post('/:id/houses', (req, res) => {
     try {
         const houseId = generateUUID();
         const stmt = db.prepare(`
-      INSERT INTO houses (id, property_id, house_number, type, rent_amount, status, amenities)
-      VALUES (?, ?, ?, ?, ?, 'Vacant', ?)
-    `);
-        stmt.run(houseId, property_id, house_number, type, rent_amount, JSON.stringify(amenities || {}));
+            INSERT INTO houses (id, property_id, house_number, type, rent_amount, status, amenities)
+            VALUES (?, ?, ?, ?, ?, 'Vacant', ?)
+        `);
+
+        stmt.run(houseId, property_id, house_number, type, Number(rent_amount), JSON.stringify(amenities || {}));
         res.json({ id: houseId, ...req.body });
     } catch (err) {
         res.status(500).json({ error: err.message });

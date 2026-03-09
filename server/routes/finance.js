@@ -18,9 +18,9 @@ router.post('/payment', (req, res) => {
     try {
         const id = generateUUID();
         const stmt = db.prepare(`
-        INSERT INTO transactions (id, tenant_id, type, amount, description, payment_method, reference_code, date)
-        VALUES (?, ?, 'Payment', ?, ?, ?, ?, ?)
-    `);
+            INSERT INTO transactions (id, tenant_id, type, amount, description, payment_method, reference_code, date)
+            VALUES (?, ?, 'Payment', ?, ?, ?, ?, ?)
+        `);
         stmt.run(id, tenant_id, amount, description, payment_method, reference_code, date || new Date().toISOString());
         res.json({ id, success: true });
     } catch (err) {
@@ -84,7 +84,7 @@ router.post('/rent-run', (req, res) => {
                     JOIN houses h ON t.house_id = h.id
                     LEFT JOIN transactions tr ON t.id = tr.tenant_id
                     WHERE t.status = 'Active'
-                    GROUP BY t.id
+                    GROUP BY t.id, h.rent_amount
                     HAVING balance < (-2 * h.rent_amount)
                 `).all();
 

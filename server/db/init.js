@@ -200,273 +200,16 @@ async function initializeDatabase() {
   seedSettings();
   seedAdminUser();
   seedHelpContent();
-  migrateToUUID(); // Sync migration
   console.log('Database Schema Applied & Default Settings Seeded Successfully.');
 }
 
-async function migrateToUUID() {
-  console.log('Starting UUID migration for sync module...');
-  try {
-    // Check if we already have the sync columns in a key table (e.g., properties)
-    const columns = db.prepare("PRAGMA table_info(properties)").all();
-    if (columns.some(c => c.name === 'sync_status')) {
-      console.log('UUID migration already completed.');
-      return;
-    }
 
-    db.exec("PRAGMA foreign_keys = OFF");
-
-    db.transaction(() => {
-      // 0. Clean up orphaned records to prevent NOT NULL constraint failures
-      console.log('Cleaning up orphaned records...');
-      db.exec("DELETE FROM transactions WHERE tenant_id NOT IN (SELECT id FROM tenants)");
-      db.exec("DELETE FROM maintenance_requests WHERE property_id IS NOT NULL AND property_id NOT IN (SELECT id FROM properties)");
-      db.exec("DELETE FROM maintenance_requests WHERE house_id NOT IN (SELECT id FROM houses)");
-      db.exec("DELETE FROM maintenance_expenses WHERE maintenance_id NOT IN (SELECT id FROM maintenance_requests)");
-      db.exec("DELETE FROM maintenance_logs WHERE maintenance_id NOT IN (SELECT id FROM maintenance_requests)");
-
-      // 1. Create mapping table
-      db.exec("CREATE TABLE IF NOT EXISTS _sync_mapping (table_name TEXT, old_id INTEGER, new_id TEXT, PRIMARY KEY (table_name, old_id))");
-
-      const syncableTables = [
-        'users', 'properties', 'houses', 'tenants', 'transactions',
-        'maintenance_requests', 'maintenance_expenses', 'maintenance_logs',
-        'mri_records', 'expenses'
-      ];
-
-      // 2. Generate UUIDs and populate mapping
-      for (const table of syncableTables) {
-        const rows = db.prepare(`SELECT id FROM ${table}`).all();
-        const insertMapping = db.prepare("INSERT INTO _sync_mapping (table_name, old_id, new_id) VALUES (?, ?, ?)");
-        for (const row of rows) {
-          insertMapping.run(table, row.id, generateUUID());
-        }
-      }
-
-      console.log('UUID mappings generated.');
-
-      // 3. Migrate each table (this is the hard part)
-      // We'll define the new schemas for each table here, referencing the mapping for FKs
-
-      // I'll implement a helper to recreate each table with UUIDs
-      migrateTable('users', `
-        id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'staff' CHECK(role IN ('admin', 'staff')),
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT
-      `);
-
-      migrateTable('properties', `
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        address TEXT,
-        type TEXT DEFAULT 'Residential' CHECK(type IN ('Residential', 'Commercial')),
-        annual_income_estimate REAL DEFAULT 0,
-        kra_pin TEXT,
-        total_units INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT
-      `);
-
-      migrateTable('houses', `
-        id TEXT PRIMARY KEY,
-        property_id TEXT NOT NULL,
-        house_number TEXT NOT NULL,
-        type TEXT,
-        rent_amount REAL NOT NULL,
-        status TEXT DEFAULT 'Vacant' CHECK(status IN ('Vacant', 'Occupied', 'Maintenance')),
-        amenities TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-      `, { property_id: 'properties' });
-
-      migrateTable('tenants', `
-        id TEXT PRIMARY KEY,
-        full_name TEXT NOT NULL,
-        national_id TEXT UNIQUE NOT NULL CHECK(length(national_id) = 8),
-        phone TEXT NOT NULL,
-        email TEXT,
-        house_id TEXT,
-        status TEXT DEFAULT 'Active' CHECK(status IN ('Active', 'Vacated', 'Arrears')),
-        move_in_date DATE,
-        agreement_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE SET NULL
-      `, { house_id: 'houses' });
-
-      migrateTable('transactions', `
-        id TEXT PRIMARY KEY,
-        tenant_id TEXT NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
-        amount REAL NOT NULL,
-        date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        description TEXT,
-        payment_method TEXT,
-        reference_code TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-      `, { tenant_id: 'tenants' });
-
-      migrateTable('maintenance_requests', `
-        id TEXT PRIMARY KEY,
-        property_id TEXT,
-        house_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        priority TEXT DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
-        status TEXT DEFAULT 'Open' CHECK(status IN ('Open', 'In Progress', 'Pending Approval', 'Completed', 'Rejected')),
-        issue_image_path TEXT,
-        receipt_image_path TEXT,
-        approved_by_user_id TEXT,
-        approved_at DATETIME,
-        rejection_note TEXT,
-        cost REAL DEFAULT 0,
-        reported_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        completed_date DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
-        FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
-        FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-      `, { property_id: 'properties', house_id: 'houses', approved_by_user_id: 'users' });
-
-      migrateTable('maintenance_expenses', `
-        id TEXT PRIMARY KEY,
-        maintenance_id TEXT NOT NULL,
-        amount REAL NOT NULL,
-        description TEXT,
-        receipt_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE
-      `, { maintenance_id: 'maintenance_requests' });
-
-      migrateTable('maintenance_logs', `
-        id TEXT PRIMARY KEY,
-        maintenance_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        performed_by TEXT NOT NULL,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE,
-        FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE CASCADE
-      `, { maintenance_id: 'maintenance_requests', performed_by: 'users' });
-
-      migrateTable('mri_records', `
-        id TEXT PRIMARY KEY,
-        month TEXT NOT NULL,
-        reference_date DATE NOT NULL,
-        gross_rent REAL NOT NULL,
-        tax_payable REAL NOT NULL,
-        net_income REAL NOT NULL,
-        status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Filed', 'NIL')),
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT
-      `);
-
-      migrateTable('expenses', `
-        id TEXT PRIMARY KEY,
-        property_id TEXT,
-        category TEXT NOT NULL CHECK(category IN ('Utilities', 'Security', 'Maintenance', 'Admin', 'Taxes', 'Other')),
-        amount REAL NOT NULL,
-        date DATE DEFAULT (date('now')),
-        description TEXT,
-        payment_method TEXT,
-        reference_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        sync_status TEXT DEFAULT 'synced',
-        source_device_id TEXT,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL
-      `, { property_id: 'properties', reference_id: 'maintenance_requests' });
-
-      // 4. Cleanup mapping table
-      db.exec("DROP TABLE _sync_mapping");
-      db.exec("PRAGMA foreign_keys = ON");
-      console.log('UUID migration completed successfully.');
-    })();
-  } catch (err) {
-    console.error('UUID Migration failed:', err);
-  }
-}
-
-function migrateTable(tableName, newSchema, fkMappings = {}) {
-  console.log(`Migrating table ${tableName}...`);
-  // Get old column names
-  const oldColumns = db.prepare(`PRAGMA table_info(${tableName})`).all().map(c => c.name);
-
-  // Recreate table
-  db.exec(`ALTER TABLE ${tableName} RENAME TO ${tableName}_old`);
-  db.exec(`CREATE TABLE ${tableName} (${newSchema})`);
-
-  // Build INSERT query
-  const newColumns = db.prepare(`PRAGMA table_info(${tableName})`).all().map(c => c.name);
-  const commonColumns = oldColumns.filter(c => newColumns.includes(c) && c !== 'id');
-
-  // Columns that need mapping as FKs
-  const fkCols = Object.keys(fkMappings);
-
-  let selectClause = commonColumns.map(c => {
-    if (fkCols.includes(c)) {
-      const referencedTable = fkMappings[c];
-      return `(SELECT new_id FROM _sync_mapping WHERE table_name = '${referencedTable}' AND old_id = ${tableName}_old.${c})`;
-    }
-    return c;
-  });
-
-  // Add the new UUID ID from mapping
-  const columnsToInsert = ['id', ...commonColumns];
-  const selectQuery = `
-    SELECT 
-      m.new_id,
-      ${selectClause.join(', ')}
-    FROM ${tableName}_old
-    JOIN _sync_mapping m ON m.table_name = '${tableName}' AND m.old_id = ${tableName}_old.id
-  `;
-
-  db.exec(`INSERT INTO ${tableName} (${columnsToInsert.join(', ')}) ${selectQuery}`);
-  db.exec(`DROP TABLE ${tableName}_old`);
-}
 
 const schema = `
   PRAGMA foreign_keys = ON;
 
   CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT DEFAULT 'staff' CHECK(role IN ('admin', 'staff')),
@@ -474,7 +217,7 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS properties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     address TEXT,
     type TEXT DEFAULT 'Residential' CHECK(type IN ('Residential', 'Commercial')),
@@ -485,8 +228,8 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS houses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    property_id TEXT NOT NULL,
     house_number TEXT NOT NULL,
     type TEXT,
     rent_amount REAL NOT NULL,
@@ -497,12 +240,12 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS tenants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
     national_id TEXT UNIQUE NOT NULL CHECK(length(national_id) = 8),
     phone TEXT NOT NULL,
     email TEXT,
-    house_id INTEGER,
+    house_id TEXT,
     status TEXT DEFAULT 'Active' CHECK(status IN ('Active', 'Vacated', 'Arrears')),
     move_in_date DATE,
     agreement_path TEXT,
@@ -511,41 +254,43 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
     type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
     amount REAL NOT NULL,
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
     payment_method TEXT,
     reference_code TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS maintenance_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_id INTEGER,
-    house_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    property_id TEXT,
+    house_id TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     priority TEXT DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
     status TEXT DEFAULT 'Open' CHECK(status IN ('Open', 'In Progress', 'Pending Approval', 'Completed', 'Rejected')),
     issue_image_path TEXT,
     receipt_image_path TEXT,
-    approved_by_user_id INTEGER,
+    approved_by_user_id TEXT,
     approved_at DATETIME,
     rejection_note TEXT,
     cost REAL DEFAULT 0,
     reported_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     completed_date DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
     FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
     FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS maintenance_expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    maintenance_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    maintenance_id TEXT NOT NULL,
     amount REAL NOT NULL,
     description TEXT,
     receipt_path TEXT,
@@ -554,11 +299,12 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS maintenance_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    maintenance_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    maintenance_id TEXT NOT NULL,
     action TEXT NOT NULL,
-    performed_by INTEGER NOT NULL,
+    performed_by TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE,
     FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -570,7 +316,7 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS mri_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     month TEXT NOT NULL, -- e.g. "January 2026"
     reference_date DATE NOT NULL, -- e.g. "2026-01-01"
     gross_rent REAL NOT NULL,
@@ -581,14 +327,14 @@ const schema = `
   );
 
   CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_id INTEGER,
+    id TEXT PRIMARY KEY,
+    property_id TEXT,
     category TEXT NOT NULL CHECK(category IN ('Utilities', 'Security', 'Maintenance', 'Admin', 'Taxes', 'Other')),
     amount REAL NOT NULL,
     date DATE DEFAULT (date('now')),
     description TEXT,
     payment_method TEXT,
-    reference_id INTEGER,
+    reference_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL
   );
@@ -623,28 +369,7 @@ const schema = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  -- Sync Module Tables
-  CREATE TABLE IF NOT EXISTS authorized_devices (
-    id TEXT PRIMARY KEY,
-    device_name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('owner', 'branch')),
-    api_token TEXT UNIQUE NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
 
-  CREATE TABLE IF NOT EXISTS sync_logs (
-    id TEXT PRIMARY KEY,
-    device_id TEXT NOT NULL,
-    records_received INTEGER DEFAULT 0,
-    records_sent INTEGER DEFAULT 0,
-    sync_started_at DATETIME NOT NULL,
-    sync_completed_at DATETIME,
-    status TEXT NOT NULL,
-    error_message TEXT,
-    FOREIGN KEY (device_id) REFERENCES authorized_devices(id) ON DELETE CASCADE
-  );
 `;
 
 const crypto = require('crypto');
@@ -666,9 +391,7 @@ function seedSettings() {
     { key: 'penalty_amount', value: '0' },
     { key: 'installation_date', value: new Date().toISOString() },
     { key: 'license_key', value: '' },
-    { key: 'jwt_secret', value: crypto.randomBytes(64).toString('hex') },
-    { key: 'device_id', value: generateUUID() },
-    { key: 'last_sync_timestamp', value: '1970-01-01T00:00:00Z' }
+    { key: 'jwt_secret', value: crypto.randomBytes(64).toString('hex') }
   ];
 
   const stmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
@@ -941,4 +664,4 @@ function initDb() {
   });
 }
 
-module.exports = { initDb, get db() { return db; }, initializeDatabase, getJwtSecret };
+module.exports = { initDb, get db() { return db; }, initializeDatabase, getJwtSecret, generateUUID };

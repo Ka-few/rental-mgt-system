@@ -42,18 +42,10 @@ router.post('/', (req, res) => {
     try {
         const id = generateUUID();
         const stmt = db.prepare(`
-            INSERT INTO expenses (id, property_id, category, amount, date, description, payment_method)
+            INSERT INTO expenses (id, property_id, category, amount, description, payment_method, date)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(
-            id,
-            property_id || null,
-            category,
-            amount,
-            date || new Date().toISOString().split('T')[0],
-            description || '',
-            payment_method || 'Cash'
-        );
+        stmt.run(id, property_id || null, category, Number(amount), description || '', payment_method || 'Cash', date || new Date().toISOString().split('T')[0]);
         res.json({ id, message: 'Expense recorded successfully' });
     } catch (err) {
         console.error('ADD EXPENSE ERROR:', err);

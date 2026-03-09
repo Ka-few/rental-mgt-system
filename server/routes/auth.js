@@ -88,7 +88,8 @@ router.post('/register', authenticate, authorizeAdmin, (req, res) => {
     try {
         const hash = bcrypt.hashSync(password, 10);
         const newId = generateUUID();
-        db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(newId, username, hash, role || 'staff');
+        const stmt = db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)');
+        stmt.run(newId, username, hash, role || 'staff');
         res.json({ message: 'User created successfully', id: newId });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
