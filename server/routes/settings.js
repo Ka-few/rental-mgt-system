@@ -126,7 +126,13 @@ router.get('/', (req, res) => {
     try {
         const rows = db.prepare('SELECT * FROM settings').all();
         const settings = {};
-        rows.forEach(row => { settings[row.key] = row.value; });
+        const sensitiveKeys = ['jwt_secret', 'device_id'];
+
+        rows.forEach(row => {
+            if (!sensitiveKeys.includes(row.key)) {
+                settings[row.key] = row.value;
+            }
+        });
         res.json(settings);
     } catch (err) {
         console.error(err);

@@ -193,6 +193,7 @@ async function initializeDatabase() {
   }
   const wasmDb = fileBuffer ? new SQL.Database(fileBuffer) : new SQL.Database();
   db.setWasmDb(wasmDb);
+  db.run('PRAGMA foreign_keys = ON;');
 
   // Run schema and seeds
   db.exec(schema);

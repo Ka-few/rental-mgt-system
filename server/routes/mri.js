@@ -19,7 +19,8 @@ router.post('/transactions', (req, res) => {
     const { month, year } = req.body;
     try {
         const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0] + ' 23:59:59';
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
 
         const transactions = db.prepare(`
             SELECT tr.*, t.full_name, h.house_number, p.name as property_name
@@ -60,7 +61,8 @@ router.post('/calculate', (req, res) => {
         // Get total rent collected (Payment type) for Residential properties in this month
         // We filter by date range for the month
         const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0] + ' 23:59:59';
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
 
         const totalCollected = db.prepare(`
             SELECT SUM(tr.amount) as total

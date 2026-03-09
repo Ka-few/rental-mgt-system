@@ -37,7 +37,8 @@ router.get('/', (req, res) => {
         const openMaintenance = db.prepare("SELECT count(*) as count FROM maintenance_requests WHERE status NOT IN ('Completed', 'Rejected')").get();
         const urgentMaintenance = db.prepare("SELECT count(*) as count FROM maintenance_requests WHERE priority IN ('High', 'Critical') AND status NOT IN ('Completed', 'Rejected')").get();
 
-        const currentMonth = new Date().toISOString().slice(0, 7);
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const maintenanceCost = db.prepare(`SELECT SUM(cost) as total FROM maintenance_requests WHERE status = 'Completed' AND strftime('%Y-%m', completed_date) = ?`).get(currentMonth);
 
         const avgResolution = db.prepare(`
@@ -74,7 +75,7 @@ router.get('/charts', (req, res) => {
             date.setMonth(date.getMonth() - i);
             months.push({
                 label: date.toLocaleString('default', { month: 'short' }),
-                yearMonth: date.toISOString().slice(0, 7) // YYYY-MM
+                yearMonth: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
             });
         }
 
