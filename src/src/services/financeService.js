@@ -5,8 +5,8 @@ export const getTransactions = async (tenantId) => {
     return response.data;
 };
 
-export const getBalances = async () => {
-    const response = await api.get('/finance/balances');
+export const getBalances = async (propertyId) => {
+    const response = await api.get('/finance/balances', { params: { property_id: propertyId } });
     return response.data;
 };
 
@@ -20,8 +20,8 @@ export const addCharge = async (data) => {
     return response.data;
 };
 
-export const runMonthlyRent = async () => {
-    const response = await api.post('/finance/rent-run');
+export const runMonthlyRent = async (propertyId) => {
+    const response = await api.post('/finance/rent-run', { property_id: propertyId });
     return response.data;
 };
 
@@ -30,7 +30,7 @@ export const updateTransaction = async (id, data) => {
     return response.data;
 };
 
-export const applyPenalties = async () => {
-    const response = await api.post('/finance/apply-penalties');
+export const applyPenalties = async (propertyId) => {
+    const response = await api.post('/finance/apply-penalties', { property_id: propertyId });
     return response.data;
 };

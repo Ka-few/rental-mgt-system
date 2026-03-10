@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent, applyPenalties } from '../services/financeService';
 import { getTenants } from '../services/tenantService';
+import { getProperties } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
 import api from '../services/api';
@@ -460,23 +461,27 @@ export default function Finance() {
     const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [selectedTenant, setSelectedTenant] = useState(null);
+    const [properties, setProperties] = useState([]);
+    const [selectedProperty, setSelectedProperty] = useState('');
 
     useEffect(() => {
         loadData();
-        getTenants().then(setTenants).catch(console.error);
+        getTenants(selectedProperty).then(setTenants).catch(console.error);
+        getProperties().then(setProperties).catch(console.error);
         api.get('/settings')
             .then(res => setCompanySettings(res.data))
             .catch(err => console.error('Error fetching settings:', err));
-    }, []);
+    }, [selectedProperty]);
 
     const loadData = useCallback(() => {
-        getBalances().then(setBalances).catch(console.error);
-    }, []);
+        getBalances(selectedProperty).then(setBalances).catch(console.error);
+    }, [selectedProperty]);
 
     const handleRentRun = async () => {
-        if (!window.confirm('Are you sure you want to generate rent charges for ALL active tenants?')) return;
+        const propertyName = selectedProperty ? properties.find(p => p.id === selectedProperty)?.name : 'ALL';
+        if (!window.confirm(`Are you sure you want to generate rent charges for active tenants in ${propertyName}?`)) return;
         try {
-            const res = await runMonthlyRent();
+            const res = await runMonthlyRent(selectedProperty);
             toast.success(res.message || 'Monthly rent generated successfully!');
             loadData();
         } catch (err) {
@@ -485,9 +490,10 @@ export default function Finance() {
     };
 
     const handleApplyPenalties = async () => {
-        if (!window.confirm('This will apply late payment penalties to all tenants defaulted for 2+ months. Continue?')) return;
+        const propertyName = selectedProperty ? properties.find(p => p.id === selectedProperty)?.name : 'ALL';
+        if (!window.confirm(`This will apply late payment penalties to defaulted tenants in ${propertyName}. Continue?`)) return;
         try {
-            const res = await applyPenalties();
+            const res = await applyPenalties(selectedProperty);
             if (res.success) {
                 toast.success(res.message);
                 loadData();
@@ -507,7 +513,20 @@ export default function Finance() {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Finance & Payments</h1>
+                <div>
+                    <h1 className="text-2xl font-bold">Finance & Payments</h1>
+                    <div className="flex items-center gap-2 mt-2">
+                        <label className="text-sm font-medium text-gray-600">Filter Property:</label>
+                        <select
+                            className="border p-2 rounded text-sm bg-white shadow-sm"
+                            value={selectedProperty}
+                            onChange={(e) => setSelectedProperty(e.target.value)}
+                        >
+                            <option value="">All Properties</option>
+                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    </div>
+                </div>
                 <div className="space-x-2">
                     <button onClick={handleApplyPenalties} className="bg-amber-600 text-white px-4 py-2 rounded shadow hover:bg-amber-700 transition-colors">Apply Penalties</button>
                     <button onClick={handleRentRun} className="bg-purple-600 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition-colors">Run Monthly Rent</button>

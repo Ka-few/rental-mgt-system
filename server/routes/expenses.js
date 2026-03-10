@@ -10,13 +10,22 @@ router.get('/', (req, res) => {
     try {
         const { property_id } = req.query;
         let query = `
-            SELECT e.*, p.name as property_name 
+            SELECT 
+                e.id, 
+                e.property_id, 
+                e.category, 
+                e.amount, 
+                e.description, 
+                e.payment_method, 
+                e.date, 
+                e.created_at,
+                p.name as property_name 
             FROM expenses e
             LEFT JOIN properties p ON e.property_id = p.id
         `;
         let params = [];
 
-        if (property_id) {
+        if (property_id && property_id !== 'all') {
             query += " WHERE e.property_id = ?";
             params.push(property_id);
         }
@@ -27,7 +36,7 @@ router.get('/', (req, res) => {
         res.json(expenses);
     } catch (err) {
         console.error('GET EXPENSES ERROR:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to retrieve expenses: ' + err.message });
     }
 });
 

@@ -1,7 +1,9 @@
 import api from './api';
 
-export const getTenants = async () => {
-    const response = await api.get('/tenants');
+export const getTenants = async (propertyId) => {
+    const params = new URLSearchParams();
+    if (propertyId) params.append('property_id', propertyId);
+    const response = await api.get(`/tenants?${params.toString()}`);
     return response.data;
 };
 

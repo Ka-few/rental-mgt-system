@@ -57,7 +57,7 @@ export default function Expenses() {
 
     const [form, setForm] = useState({
         property_id: '',
-        category: EXPENSE_CATEGORIES[0],
+        category: EXPENSE_CATEGORIES[0] || 'Other',
         amount: '',
         date: new Date().toISOString().split('T')[0],
         description: '',
@@ -146,7 +146,7 @@ export default function Expenses() {
                         type="text"
                         placeholder="Search description..."
                         className="w-full border-gray-200 border rounded-lg p-2 outline-none focus:border-emerald-500"
-                        value={searchTerm}
+                        value={searchTerm || ''}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
@@ -154,7 +154,7 @@ export default function Expenses() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Category</label>
                     <select
                         className="w-full border-gray-200 border rounded-lg p-2 outline-none focus:border-emerald-500"
-                        value={filterCategory}
+                        value={filterCategory || 'all'}
                         onChange={(e) => setFilterCategory(e.target.value)}
                     >
                         <option value="all">All Categories</option>
@@ -167,7 +167,7 @@ export default function Expenses() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Property</label>
                     <select
                         className="w-full border-gray-200 border rounded-lg p-2 outline-none focus:border-emerald-500"
-                        value={filterProperty}
+                        value={filterProperty || 'all'}
                         onChange={(e) => setFilterProperty(e.target.value)}
                     >
                         <option value="all">All Properties</option>
@@ -236,7 +236,7 @@ export default function Expenses() {
                                 <label className="block text-sm font-bold text-gray-600 mb-1">Associate Property</label>
                                 <select
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
-                                    value={form.property_id}
+                                    value={form.property_id || ''}
                                     onChange={(e) => setForm(prev => ({ ...prev, property_id: e.target.value }))}
                                 >
                                     <option value="">General/Office Expense</option>
@@ -249,7 +249,7 @@ export default function Expenses() {
                                     <select
                                         className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                         required
-                                        value={form.category}
+                                        value={form.category || EXPENSE_CATEGORIES[0] || 'Other'}
                                         onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
                                     >
                                         {EXPENSE_CATEGORIES.map(cat => (
@@ -265,7 +265,7 @@ export default function Expenses() {
                                         required
                                         min="0"
                                         step="0.01"
-                                        value={form.amount}
+                                        value={form.amount || ''}
                                         onChange={(e) => setForm(prev => ({ ...prev, amount: e.target.value }))}
                                     />
                                 </div>
@@ -276,7 +276,7 @@ export default function Expenses() {
                                     type="text"
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                     placeholder="e.g. Electricity token for common areas"
-                                    value={form.description}
+                                    value={form.description || ''}
                                     onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
                                 />
                             </div>
@@ -286,7 +286,7 @@ export default function Expenses() {
                                     type="date"
                                     className="w-full border-gray-200 border rounded-xl p-3 outline-none focus:border-emerald-500"
                                     required
-                                    value={form.date}
+                                    value={form.date || ''}
                                     onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
                                 />
                             </div>

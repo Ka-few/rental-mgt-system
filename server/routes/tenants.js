@@ -36,13 +36,21 @@ const upload = multer({
 // Get all tenants
 router.get('/', (req, res) => {
     try {
-        // Join with house details
-        const tenants = db.prepare(`
+        const { property_id } = req.query;
+        let query = `
       SELECT t.*, h.house_number, p.name as property_name, p.id as property_id 
       FROM tenants t
       LEFT JOIN houses h ON t.house_id = h.id
       LEFT JOIN properties p ON h.property_id = p.id
-    `).all();
+      WHERE 1=1
+    `;
+        let params = [];
+        if (property_id) {
+            query += " AND p.id = ? ";
+            params.push(property_id);
+        }
+
+        const tenants = db.prepare(query).all(...params);
         res.json(tenants);
     } catch (err) {
         console.error('GET TENANTS ERROR:', err);

@@ -193,7 +193,7 @@ async function initializeDatabase() {
   }
   const wasmDb = fileBuffer ? new SQL.Database(fileBuffer) : new SQL.Database();
   db.setWasmDb(wasmDb);
-  db.run('PRAGMA foreign_keys = ON;');
+  db.exec('PRAGMA foreign_keys = ON;');
 
   // Run schema and seeds
   db.exec(schema);
@@ -318,19 +318,21 @@ const schema = `
 
   CREATE TABLE IF NOT EXISTS mri_records (
     id TEXT PRIMARY KEY,
+    property_id TEXT,
     month TEXT NOT NULL, -- e.g. "January 2026"
     reference_date DATE NOT NULL, -- e.g. "2026-01-01"
     gross_rent REAL NOT NULL,
     tax_payable REAL NOT NULL,
     net_income REAL NOT NULL,
     status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Filed', 'NIL')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
     property_id TEXT,
-    category TEXT NOT NULL CHECK(category IN ('Utilities', 'Security', 'Maintenance', 'Admin', 'Taxes', 'Other')),
+    category TEXT NOT NULL CHECK(category IN ('Utilities', 'Maintenance', 'Security', 'Repairs', 'Cleaning', 'Insurance', 'Admin', 'Staff Wages', 'Taxes', 'Other')),
     amount REAL NOT NULL,
     date DATE DEFAULT (date('now')),
     description TEXT,
@@ -673,6 +675,49 @@ function migrate() {
       db.prepare("ALTER TABLE expenses ADD COLUMN reference_id TEXT").run();
     }
 
+    if (!expensesColumns.map(c => c.name).includes('updated_at')) {
+      console.log("Adding audit columns to expenses...");
+      db.prepare("ALTER TABLE expenses ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
+      db.prepare("ALTER TABLE expenses ADD COLUMN deleted_at DATETIME").run();
+      db.prepare("ALTER TABLE expenses ADD COLUMN sync_status TEXT DEFAULT 'synced'").run();
+      db.prepare("ALTER TABLE expenses ADD COLUMN source_device_id TEXT").run();
+    }
+
+    // Migration for expenses CHECK constraint update
+    const expensesDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='expenses'").get();
+    if (expensesDef && !expensesDef.sql.includes("'Repairs'")) {
+      console.log("Migrating expenses table to update categories CHECK constraint...");
+      db.transaction(() => {
+        db.prepare("PRAGMA foreign_keys = OFF").run();
+        db.prepare("ALTER TABLE expenses RENAME TO expenses_old").run();
+        db.prepare(`
+          CREATE TABLE expenses (
+            id TEXT PRIMARY KEY,
+            property_id TEXT,
+            category TEXT NOT NULL CHECK(category IN ('Utilities', 'Maintenance', 'Security', 'Repairs', 'Cleaning', 'Insurance', 'Admin', 'Staff Wages', 'Taxes', 'Other')),
+            amount REAL NOT NULL,
+            date DATE DEFAULT (date('now')),
+            description TEXT,
+            payment_method TEXT,
+            reference_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME,
+            sync_status TEXT DEFAULT 'synced',
+            source_device_id TEXT,
+            FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL
+          )
+        `).run();
+        db.prepare(`
+          INSERT INTO expenses (id, property_id, category, amount, date, description, payment_method, reference_id, created_at, updated_at, deleted_at, sync_status, source_device_id)
+          SELECT id, property_id, category, amount, date, description, payment_method, reference_id, created_at, updated_at, deleted_at, sync_status, source_device_id FROM expenses_old
+        `).run();
+        db.prepare("DROP TABLE expenses_old").run();
+        db.prepare("PRAGMA foreign_keys = ON").run();
+      })();
+      console.log("Expenses table migrated.");
+    }
+
     // Migration: Convert primary keys from INTEGER to TEXT (UUID) for core tables
     // This handles upgrading from older installs where tables used INTEGER PK
     const propertiesTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='properties'").get();
@@ -731,6 +776,14 @@ function migrate() {
         db.prepare("PRAGMA foreign_keys = ON").run();
       })();
       console.log('Updated tenants table to allow non-unique national_id.');
+    }
+
+    // Migration: Add property_id to mri_records
+    const mriTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mri_records'").get();
+    if (mriTableDef && !mriTableDef.sql.includes('property_id')) {
+      console.log('Adding property_id column to mri_records...');
+      db.exec("ALTER TABLE mri_records ADD COLUMN property_id TEXT REFERENCES properties(id) ON DELETE CASCADE");
+      console.log('Column property_id added to mri_records.');
     }
 
     console.log('Migrations checked/applied.');

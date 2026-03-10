@@ -11,6 +11,8 @@ export default function MRIReports() {
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear()
     });
+    const [properties, setProperties] = useState([]);
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
 
     // Breakdown Modal State
     const [breakdownModal, setBreakdownModal] = useState({
@@ -25,7 +27,7 @@ export default function MRIReports() {
     const loadRecords = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await api.get('/mri');
+            const data = await api.get('/mri', { params: { property_id: selectedPropertyId } });
             setRecords(data.data);
         } catch (err) {
             console.error(err);
@@ -40,12 +42,19 @@ export default function MRIReports() {
         api.get('/settings')
             .then(res => setCompanySettings(res.data))
             .catch(err => console.error('Error fetching settings:', err));
-    }, [loadRecords]);
+        api.get('/properties')
+            .then(res => setProperties(res.data))
+            .catch(err => console.error('Error fetching properties:', err));
+    }, [loadRecords, selectedPropertyId]);
 
     const handleCalculate = async () => {
+        if (!selectedPropertyId) {
+            toast.error('Please select a property first');
+            return;
+        }
         setCalculating(true);
         try {
-            await api.post('/mri/calculate', selectedDate);
+            await api.post('/mri/calculate', { ...selectedDate, property_id: selectedPropertyId });
             toast.success('MRI record generated/updated successfully');
             loadRecords();
         } catch (err) {
@@ -77,10 +86,10 @@ export default function MRIReports() {
         const month = new Date(Date.parse(monthName + " 1, 2000")).getMonth() + 1;
         const year = parseInt(yearStr);
 
-        setBreakdownModal({ isOpen: true, loading: true, transactions: [], monthLabel: record.month });
+        setBreakdownModal({ isOpen: true, loading: true, transactions: [], monthLabel: `${record.month} (${record.property_name || 'Global'})` });
 
         try {
-            const res = await api.post('/mri/transactions', { month, year });
+            const res = await api.post('/mri/transactions', { month, year, property_id: record.property_id });
             setBreakdownModal(prev => ({ ...prev, loading: false, transactions: res.data }));
         } catch (err) {
             console.error(err);
@@ -95,7 +104,7 @@ export default function MRIReports() {
             const month = new Date(Date.parse(monthName + " 1, 2000")).getMonth() + 1;
             const year = parseInt(yearStr);
 
-            const res = await api.post('/mri/transactions', { month, year });
+            const res = await api.post('/mri/transactions', { month, year, property_id: record.property_id });
             const transactions = res.data;
 
             if (!transactions || transactions.length === 0) {
@@ -136,8 +145,20 @@ export default function MRIReports() {
             doc.text('MRI TAX REPORT', 196, 20, { align: 'right' });
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
+            // Period & Property Details
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
             doc.text(`Period: ${record.month}`, 196, 28, { align: 'right' });
-            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 34, { align: 'right' });
+
+            const propDetails = [];
+            if (record.property_name) propDetails.push(`Property: ${record.property_name}`);
+            const property = properties.find(p => p.id === record.property_id);
+            if (property?.kra_pin) propDetails.push(`KRA PIN: ${property.kra_pin}`);
+
+            if (propDetails.length > 0) {
+                doc.text(propDetails.join(' | '), 196, 34, { align: 'right' });
+            }
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 40, { align: 'right' });
 
             // Reset text color for body
             doc.setTextColor(0, 0, 0);
@@ -148,25 +169,25 @@ export default function MRIReports() {
             const net = total - tax;
 
             doc.setFillColor(248, 250, 252); // Slate-50 background for summary
-            doc.rect(14, 45, 182, 30, 'F');
+            doc.rect(14, 50, 182, 30, 'F');
             doc.setDrawColor(226, 232, 240); // Slate-200 border
-            doc.rect(14, 45, 182, 30, 'S');
+            doc.rect(14, 50, 182, 30, 'S');
 
             doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');
-            doc.text('FINANCIAL SUMMARY', 20, 52);
+            doc.text('FINANCIAL SUMMARY', 20, 57);
 
             doc.setFont('helvetica', 'normal');
-            doc.text('Gross Rent Collected:', 20, 60);
-            doc.text('MRI Tax Payable (7.5%):', 20, 66);
-            doc.text('Net Income After Tax:', 20, 72);
+            doc.text('Gross Rent Collected:', 20, 65);
+            doc.text('MRI Tax Payable (7.5%):', 20, 71);
+            doc.text('Net Income After Tax:', 20, 77);
 
             doc.setFont('helvetica', 'bold');
-            doc.text(`KES ${total.toLocaleString()}`, 100, 60);
+            doc.text(`KES ${total.toLocaleString()}`, 100, 65);
             doc.setTextColor(220, 38, 38); // Red color for tax
-            doc.text(`KES ${tax.toLocaleString()}`, 100, 66);
+            doc.text(`KES ${tax.toLocaleString()}`, 100, 71);
             doc.setTextColor(5, 150, 105); // Emerald-600 color for net
-            doc.text(`KES ${net.toLocaleString()}`, 100, 72);
+            doc.text(`KES ${net.toLocaleString()}`, 100, 77);
             doc.setTextColor(0, 0, 0);
 
             // Table
@@ -180,7 +201,7 @@ export default function MRIReports() {
             ]);
 
             autoTable(doc, {
-                startY: 85,
+                startY: 90,
                 head: [['Date', 'Tenant', 'House', 'Property', 'Description', 'Amount']],
                 body: tableData,
                 foot: [[{ content: 'Total Qualifying Rent:', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } }, `KES ${total.toLocaleString()}`]],
@@ -215,6 +236,17 @@ export default function MRIReports() {
                     <p className="text-gray-500 mt-2">Residential Rental Income Tax (7.5%) tracking and filing records.</p>
                 </div>
                 <div className="w-full md:w-auto flex flex-wrap md:flex-nowrap gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex-1 min-w-[180px]">
+                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Select Property</label>
+                        <select
+                            value={selectedPropertyId}
+                            onChange={e => setSelectedPropertyId(e.target.value)}
+                            className="w-full bg-gray-50 border-none rounded-lg p-2 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">Choose Property...</option>
+                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    </div>
                     <div className="flex-1 min-w-[120px]">
                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Select Month</label>
                         <select
@@ -253,7 +285,7 @@ export default function MRIReports() {
                     <table className="w-full text-left border-collapse min-w-[800px]">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-100">
-                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Month / Year</th>
+                                <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Property / Month</th>
                                 <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Gross Rent Collected</th>
                                 <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest text-blue-600">MRI Tax (7.5%)</th>
                                 <th className="px-8 py-5 text-sm font-black text-gray-400 uppercase tracking-widest">Net Income</th>
@@ -270,7 +302,10 @@ export default function MRIReports() {
                                 </tr>
                             ) : records.map(record => (
                                 <tr key={record.id} className="hover:bg-blue-50/30 transition-colors">
-                                    <td className="px-8 py-6 font-bold text-gray-800">{record.month}</td>
+                                    <td className="px-8 py-6">
+                                        <div className="font-bold text-gray-800">{record.month}</div>
+                                        <div className="text-xs text-gray-500 font-medium">{record.property_name || 'Unknown Property'}</div>
+                                    </td>
                                     <td className="px-8 py-6 font-mono font-medium text-gray-600">KES {record.gross_rent.toLocaleString()}</td>
                                     <td className="px-8 py-6 font-mono font-bold text-blue-600">KES {record.tax_payable.toLocaleString()}</td>
                                     <td className="px-8 py-6 font-mono font-medium text-emerald-600">KES {record.net_income.toLocaleString()}</td>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getFinancialReport, getOccupancyReport, getArrearsReport, getDetailedTransactions } from '../services/reportService';
+import { getProperties } from '../services/propertyService';
 import { exportToExcel, formatDataForExport } from '../utils/export';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
@@ -16,8 +17,8 @@ export default function Reports() {
         totalPenalties: 0,
         netIncome: 0
     });
-    const [financialTransactions, setFinancialTransactions] = useState([]);
-    const [finFilters, setFinFilters] = useState({ startDate: '', endDate: '' });
+    const [financialTransactions, setFinancialTransactions] = useState({ data: [], pagination: { page: 1, limit: 20, total: 0, pages: 1 } });
+    const [finFilters, setFinFilters] = useState({ startDate: '', endDate: '', page: 1, limit: 20 });
 
     // Occupancy State
     const [occupancyData, setOccupancyData] = useState([]);
@@ -25,28 +26,33 @@ export default function Reports() {
     // Arrears State
     const [arrearsData, setArrearsData] = useState([]);
     const [companySettings, setCompanySettings] = useState({});
+    const [properties, setProperties] = useState([]);
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
 
     useEffect(() => {
         loadData();
         api.get('/settings')
             .then(res => setCompanySettings(res.data))
             .catch(err => console.error('Error fetching settings:', err));
-    }, [activeTab]);
+        getProperties()
+            .then(setProperties)
+            .catch(console.error);
+    }, [activeTab, selectedPropertyId, finFilters.page, finFilters.limit]);
 
     const loadData = async () => {
         try {
             if (activeTab === 'financial') {
-                const [data, transactions] = await Promise.all([
-                    getFinancialReport(finFilters.startDate, finFilters.endDate),
-                    getDetailedTransactions(finFilters.startDate, finFilters.endDate)
+                const [data, transactionsResponse] = await Promise.all([
+                    getFinancialReport(finFilters.startDate, finFilters.endDate, selectedPropertyId),
+                    getDetailedTransactions(finFilters.startDate, finFilters.endDate, selectedPropertyId, finFilters.page, finFilters.limit)
                 ]);
                 setFinancialData(data);
-                setFinancialTransactions(transactions);
+                setFinancialTransactions(transactionsResponse);
             } else if (activeTab === 'occupancy') {
-                const data = await getOccupancyReport();
+                const data = await getOccupancyReport(selectedPropertyId);
                 setOccupancyData(data);
             } else if (activeTab === 'arrears') {
-                const data = await getArrearsReport();
+                const data = await getArrearsReport(selectedPropertyId);
                 setArrearsData(data);
             }
         } catch (err) {
@@ -93,8 +99,14 @@ export default function Reports() {
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
             doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 28, { align: 'right' });
-            if (activeTab === 'financial' && (finFilters.startDate || finFilters.endDate)) {
-                doc.text(`Period: ${finFilters.startDate || 'Start'} to ${finFilters.endDate || 'End'}`, 196, 34, { align: 'right' });
+            if (activeTab === 'financial' && (finFilters.startDate || finFilters.endDate || selectedPropertyId)) {
+                let periodText = '';
+                if (finFilters.startDate || finFilters.endDate) periodText += `${finFilters.startDate || 'Start'} to ${finFilters.endDate || 'End'}`;
+                if (selectedPropertyId) {
+                    const pName = properties.find(p => p.id === selectedPropertyId)?.name;
+                    periodText += periodText ? ` | Property: ${pName}` : `Property: ${pName}`;
+                }
+                doc.text(periodText, 196, 34, { align: 'right' });
             }
 
             doc.setTextColor(0, 0, 0);
@@ -119,7 +131,8 @@ export default function Reports() {
                 doc.text(`NET ADJUSTED INCOME: KES ${financialData.netIncome.toLocaleString()}`, 120, 72);
 
                 // Detailed Transactions Table
-                const tableData = financialTransactions.map(t => [
+                const transactions = financialTransactions?.data || [];
+                const tableData = transactions.map(t => [
                     new Date(t.date).toLocaleDateString(),
                     t.tenant_name,
                     `${t.property_name} - ${t.house_number}`,
@@ -212,8 +225,10 @@ export default function Reports() {
                 data = formatDataForExport(arrearsData, fieldMap);
                 filename = `Debtors_Report_${new Date().toISOString().split('T')[0]}`;
             } else if (activeTab === 'financial') {
-                toast.info('Fetching detailed transactions for export...');
-                const transactions = await getDetailedTransactions(finFilters.startDate, finFilters.endDate);
+                toast.info('Fetching all transactions for export...');
+                // Fetch with a large limit to get all relevant transactions for export
+                const transactionsResponse = await getDetailedTransactions(finFilters.startDate, finFilters.endDate, selectedPropertyId, 1, 10000);
+                const transactions = transactionsResponse.data;
 
                 fieldMap = {
                     date: 'Date',
@@ -270,7 +285,20 @@ export default function Reports() {
             </div>
 
             <div className="flex justify-between items-center mb-6 print:hidden">
-                <h1 className="text-2xl font-bold">System Reports</h1>
+                <div>
+                    <h1 className="text-2xl font-bold">System Reports</h1>
+                    <div className="flex items-center gap-2 mt-2">
+                        <label className="text-sm font-medium text-gray-600">Filter Property:</label>
+                        <select
+                            className="border p-2 rounded text-sm bg-white shadow-sm"
+                            value={selectedPropertyId}
+                            onChange={(e) => setSelectedPropertyId(e.target.value)}
+                        >
+                            <option value="">All Properties</option>
+                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    </div>
+                </div>
                 <div className="flex gap-2">
                     <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">
                         📊 Export to Excel
@@ -393,7 +421,7 @@ export default function Reports() {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {financialTransactions.map((t, idx) => (
+                                    {((financialTransactions?.data) || []).map((t, idx) => (
                                         <tr key={idx}>
                                             <td className="px-4 py-3 whitespace-nowrap">{new Date(t.date).toLocaleDateString()}</td>
                                             <td className="px-4 py-3">
@@ -414,11 +442,67 @@ export default function Reports() {
                                             </td>
                                         </tr>
                                     ))}
-                                    {financialTransactions.length === 0 && (
+                                    {(financialTransactions?.data || []).length === 0 && (
                                         <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400 italic">No transactions found for the selected range.</td></tr>
                                     )}
                                 </tbody>
                             </table>
+
+                            {/* Pagination Controls */}
+                            {financialTransactions?.pagination?.pages > 1 && (
+                                <div className="mt-4 flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+                                    <div className="flex flex-1 justify-between sm:hidden">
+                                        <button
+                                            disabled={finFilters.page === 1}
+                                            onClick={() => setFinFilters({ ...finFilters, page: finFilters.page - 1 })}
+                                            className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                        >
+                                            Previous
+                                        </button>
+                                        <button
+                                            disabled={finFilters.page === (financialTransactions?.pagination?.pages || 1)}
+                                            onClick={() => setFinFilters({ ...finFilters, page: finFilters.page + 1 })}
+                                            className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                    <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="text-sm text-gray-700">
+                                                Showing <span className="font-medium">{(finFilters.page - 1) * finFilters.limit + 1}</span> to{' '}
+                                                <span className="font-medium">
+                                                    {Math.min(finFilters.page * finFilters.limit, financialTransactions?.pagination?.total || 0)}
+                                                </span>{' '}
+                                                of <span className="font-medium">{financialTransactions?.pagination?.total || 0}</span> results
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                                <button
+                                                    disabled={finFilters.page === 1}
+                                                    onClick={() => setFinFilters({ ...finFilters, page: finFilters.page - 1 })}
+                                                    className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                                >
+                                                    <span className="sr-only">Previous</span>
+                                                    &larr;
+                                                </button>
+                                                <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 focus:z-20 focus:outline-offset-0">
+                                                    Page {finFilters.page} of {financialTransactions?.pagination?.pages || 1}
+                                                </span>
+                                                <button
+                                                    disabled={finFilters.page === financialTransactions.pagination.pages}
+                                                    onClick={() => setFinFilters({ ...finFilters, page: finFilters.page + 1 })}
+                                                    className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                                >
+                                                    <span className="sr-only">Next</span>
+                                                    &rarr;
+                                                </button>
+                                            </nav>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

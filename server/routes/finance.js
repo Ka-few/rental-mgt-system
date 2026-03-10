@@ -50,33 +50,49 @@ router.post('/charge', (req, res) => {
     }
 });
 
-// Monthly Rent Run (Charge all active tenants)
+// Monthly Rent Run (Charge active tenants - can be filtered by property)
 router.post('/rent-run', (req, res) => {
+    const { property_id } = req.body;
     try {
         const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
         const description = `Monthly Rent - ${month}`;
 
-        // ── Deduplication guard ───────────────────────────────────────────────
-        // Check whether a Rent Charge for this month has already been run.
-        const alreadyRun = db.prepare(`
-            SELECT COUNT(*) as cnt FROM transactions
-            WHERE type = 'Rent Charge' AND description = ?
-        `).get(description);
+        // ── Deduplication guard (Property-aware) ─────────────────────────────
+        let guardQuery = `
+            SELECT COUNT(*) as cnt FROM transactions tr
+            JOIN tenants t ON tr.tenant_id = t.id
+            JOIN houses h ON t.house_id = h.id
+            WHERE tr.type = 'Rent Charge' AND tr.description = ?
+        `;
+        const guardParams = [description];
+        if (property_id) {
+            guardQuery += " AND h.property_id = ? ";
+            guardParams.push(property_id);
+        }
+
+        const alreadyRun = db.prepare(guardQuery).get(...guardParams);
 
         if (alreadyRun.cnt > 0) {
             return res.status(409).json({
-                message: `Rent run for ${month} has already been posted. Running it again would double-charge all tenants.`,
+                message: `Rent run for ${month} ${property_id ? 'for this property ' : ''}has already been posted.`,
                 alreadyRun: true
             });
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        const activeTenants = db.prepare(`
+        let tenantQuery = `
             SELECT t.id, h.rent_amount 
             FROM tenants t 
             JOIN houses h ON t.house_id = h.id 
             WHERE t.status = 'Active' AND h.rent_amount > 0
-        `).all();
+        `;
+        const tenantParams = [];
+        if (property_id) {
+            tenantQuery += " AND h.property_id = ? ";
+            tenantParams.push(property_id);
+        }
+
+        const activeTenants = db.prepare(tenantQuery).all(...tenantParams);
 
         const insertStmt = db.prepare(`
             INSERT INTO transactions (id, tenant_id, type, amount, description, date)
@@ -85,30 +101,37 @@ router.post('/rent-run', (req, res) => {
 
         const date = new Date().toISOString();
 
-        const transaction = db.transaction((tenants) => {
-            for (const tenant of tenants) {
+        db.transaction(() => {
+            for (const tenant of activeTenants) {
                 insertStmt.run(generateUUID(), tenant.id, tenant.rent_amount, description, date);
             }
-        });
+        })();
 
-        transaction(activeTenants);
-
-        // --- NEW: Automatically apply penalties during rent run ---
+        // --- NEW: Automatically apply penalties during rent run (Property-aware) ---
         try {
             const settings = {};
             db.prepare("SELECT key, value FROM settings WHERE key IN ('penalty_enabled', 'penalty_type', 'penalty_amount')")
                 .all().forEach(s => settings[s.key] = s.value);
 
             if (settings.penalty_enabled === 'true') {
-                const lateTenants = db.prepare(`
+                let lateQuery = `
                     SELECT t.id, h.rent_amount, SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
                     FROM tenants t
                     JOIN houses h ON t.house_id = h.id
                     LEFT JOIN transactions tr ON t.id = tr.tenant_id
                     WHERE t.status = 'Active'
+                `;
+                const lateParams = [];
+                if (property_id) {
+                    lateQuery += " AND h.property_id = ? ";
+                    lateParams.push(property_id);
+                }
+                lateQuery += `
                     GROUP BY t.id, h.rent_amount
                     HAVING balance < (-2 * h.rent_amount)
-                `).all();
+                `;
+
+                const lateTenants = db.prepare(lateQuery).all(...lateParams);
 
                 const penaltyStmt = db.prepare(`INSERT INTO transactions (id, tenant_id, type, amount, description, date) VALUES (?, ?, 'Adjustment', ?, ?, ?)`);
                 const penaltyDate = new Date().toISOString();
@@ -117,7 +140,7 @@ router.post('/rent-run', (req, res) => {
                     for (const tenant of lateTenants) {
                         const amount = settings.penalty_type === 'Fixed' ? parseFloat(settings.penalty_amount) : Math.abs(tenant.balance) * (parseFloat(settings.penalty_amount) / 100);
                         if (amount > 0) {
-                            penaltyStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, penaltyDate);
+                            penaltyStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${month}`, penaltyDate);
                         }
                     }
                 })();
@@ -125,20 +148,19 @@ router.post('/rent-run', (req, res) => {
         } catch (pErr) {
             console.error('Penalty application during rent run failed:', pErr);
         }
-        // --- END PENALTY LOGIC ---
 
-        res.json({ success: true, count: activeTenants.length, message: `Generated rent for ${activeTenants.length} active tenants (and checked for penalties).` });
+        res.json({ success: true, count: activeTenants.length, message: `Generated rent for ${activeTenants.length} tenants.` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Get Balances (Dashboard/Report)
-// Calculated on flight or stored? Calculated is safer for consistency.
+// Get Balances (Dashboard/Report - optionally filtered by property)
 router.get('/balances', (req, res) => {
+    const { property_id } = req.query;
     try {
-        const balances = db.prepare(`
+        let query = `
             SELECT 
                 t.id as tenant_id, 
                 t.full_name,
@@ -146,11 +168,19 @@ router.get('/balances', (req, res) => {
                 p.name as property_name,
                 SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
             FROM tenants t
-            LEFT JOIN houses h ON t.house_id = h.id
-            LEFT JOIN properties p ON h.property_id = p.id
+            JOIN houses h ON t.house_id = h.id
+            JOIN properties p ON h.property_id = p.id
             LEFT JOIN transactions tr ON t.id = tr.tenant_id
-            GROUP BY t.id
-        `).all();
+            WHERE 1=1
+        `;
+        const params = [];
+        if (property_id) {
+            query += " AND p.id = ? ";
+            params.push(property_id);
+        }
+        query += " GROUP BY t.id ";
+
+        const balances = db.prepare(query).all(...params);
         res.json(balances);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -194,7 +224,9 @@ router.get('/apply-penalties', (req, res) => {
     });
 });
 
+// Apply Penalties (Detect 2+ months default - can be filtered by property)
 router.post('/apply-penalties', (req, res) => {
+    const { property_id } = req.body;
     try {
         const settings = {};
         db.prepare("SELECT key, value FROM settings WHERE key IN ('penalty_enabled', 'penalty_type', 'penalty_amount')")
@@ -204,7 +236,7 @@ router.post('/apply-penalties', (req, res) => {
             return res.json({ success: false, message: 'Penalties are disabled.' });
         }
 
-        const activeTenants = db.prepare(`
+        let tenantQuery = `
             SELECT 
                 t.id, t.full_name, h.rent_amount,
                 SUM(CASE WHEN tr.type = 'Payment' THEN tr.amount ELSE -tr.amount END) as balance
@@ -212,9 +244,18 @@ router.post('/apply-penalties', (req, res) => {
             JOIN houses h ON t.house_id = h.id
             LEFT JOIN transactions tr ON t.id = tr.tenant_id
             WHERE t.status = 'Active'
+        `;
+        const tenantParams = [];
+        if (property_id) {
+            tenantQuery += " AND h.property_id = ? ";
+            tenantParams.push(property_id);
+        }
+        tenantQuery += `
             GROUP BY t.id, h.rent_amount
-            HAVING balance < (-2 * h.rent_amount) -- Default: Balance is twice the monthly rent (approx 2 months unpaid)
-        `).all();
+            HAVING balance < (-2 * h.rent_amount)
+        `;
+
+        const activeTenants = db.prepare(tenantQuery).all(...tenantParams);
 
         const insertStmt = db.prepare(`
             INSERT INTO transactions (id, tenant_id, type, amount, description, date)
@@ -223,6 +264,7 @@ router.post('/apply-penalties', (req, res) => {
 
         let appliedCount = 0;
         const date = new Date().toISOString();
+        const month = new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' });
 
         db.transaction(() => {
             for (const tenant of activeTenants) {
@@ -237,7 +279,7 @@ router.post('/apply-penalties', (req, res) => {
                 }
 
                 if (amount > 0) {
-                    insertStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}`, date);
+                    insertStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${month}`, date);
                     appliedCount++;
                 }
             }
