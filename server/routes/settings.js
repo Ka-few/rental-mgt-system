@@ -13,15 +13,30 @@ const upload = multer({ dest: 'uploads/' });
 
 // Backup Database (Download)
 router.get('/backup', authorizeAdmin, (req, res) => {
-    // Ensure the DB is flushed to disk before downloading
     try {
+        // First trigger an async save to disk just in case
         if (db.saveImmediately) {
             db.saveImmediately();
         }
+
+        if (db.db) {
+            // Export the database directly to a buffer to avoid race conditions with fs.writeFile
+            const data = db.db.export();
+            const buffer = Buffer.from(data);
+
+            const filename = `rental_backup_${new Date().toISOString().split('T')[0]}.db`;
+
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Length', buffer.length);
+
+            return res.send(buffer);
+        }
     } catch (e) {
-        console.warn('Could not force save before backup:', e);
+        console.error('Error generating backup buffer:', e);
     }
 
+    // Fallback if db.db is unavailable or export fails
     res.download(dbPath, `rental_backup_${new Date().toISOString().split('T')[0]}.db`, (err) => {
         if (err) {
             console.error('Error downloading database:', err);

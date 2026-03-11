@@ -12,7 +12,7 @@ const authenticate = (req, res, next) => {
     jwt.verify(token, getJwtSecret(), (err, decoded) => {
         if (err) {
             console.error('JWT Verification Error:', err.message);
-            return res.status(403).json({ message: 'Session expired or invalid. Please log in again.' });
+            return res.status(401).json({ message: 'Session expired or invalid. Please log in again.' });
         }
         req.user = decoded;
         next();

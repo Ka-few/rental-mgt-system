@@ -88,8 +88,28 @@ const Settings = () => {
         }
     };
 
-    const handleBackup = () => {
-        window.location.href = `${API_URL}/api/settings/backup`;
+    const handleBackup = async () => {
+        try {
+            toast.info('Preparing backup for download...');
+            const response = await api.get('/settings/backup', {
+                responseType: 'blob'
+            });
+
+            // Create a link to download the file
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `rental_backup_${new Date().toISOString().split('T')[0]}.db`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            toast.success('Backup downloaded successfully!');
+        } catch (err) {
+            console.error('Backup Error:', err);
+            toast.error('Failed to download backup. Please ensure you are logged in as an administrator.');
+        }
     };
 
     const handleClearData = async () => {

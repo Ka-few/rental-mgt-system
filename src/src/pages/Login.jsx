@@ -27,9 +27,9 @@ function Login() {
 
         setIsLoading(true);
         try {
-            const loginResponse = await login(username, password);
+            await login(username, password);
             toast.success('Successfully logged in!');
-            navigate(loginResponse.role === 'admin' ? '/' : '/tenants');
+            // Navigation is handled by the useEffect watching the 'user' state
         } catch (err) {
             toast.error(err.response?.data?.message || err.message || 'Login failed');
         } finally {
