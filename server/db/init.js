@@ -131,7 +131,10 @@ class DatabaseWrapper {
   exec(sql) {
     if (!this.db) throw new Error('Database not initialized');
     try {
-      this.db.run(sql);
+      // Use sql.js .exec() (not .run()) so that multi-statement SQL strings
+      // (e.g. the full schema with many CREATE TABLE blocks) are fully executed.
+      // .run() only processes the first statement; .exec() iterates all of them.
+      this.db.exec(sql);
       this.save();
     } catch (err) {
       console.error('DB EXEC ERROR:', err.message);
@@ -647,26 +650,106 @@ function migrate() {
     }
 
     // New Maintenance Tables
+    // Each table is created in a SEPARATE exec() call so that if the first
+    // one is a no-op (table already exists), the second is still guaranteed
+    // to run. TEXT PKs are used to match the schema definition above and the
+    // UUID values inserted by the route handlers.
     db.exec(`
         CREATE TABLE IF NOT EXISTS maintenance_expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            maintenance_id INTEGER NOT NULL,
+            id TEXT PRIMARY KEY,
+            maintenance_id TEXT NOT NULL,
             amount REAL NOT NULL,
             description TEXT,
             receipt_path TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE
         );
+    `);
+    db.exec(`
         CREATE TABLE IF NOT EXISTS maintenance_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            maintenance_id INTEGER NOT NULL,
+            id TEXT PRIMARY KEY,
+            maintenance_id TEXT NOT NULL,
             action TEXT NOT NULL,
-            performed_by INTEGER NOT NULL,
+            performed_by TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE,
             FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE CASCADE
         );
     `);
+
+    // --- Repair migration: rebuild maintenance_logs with TEXT PKs if created with old INTEGER PKs ---
+    const mlTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='maintenance_logs'").get();
+    if (mlTableDef && mlTableDef.sql && mlTableDef.sql.includes('INTEGER PRIMARY KEY')) {
+      console.log('Repairing maintenance_logs: rebuilding with TEXT PKs...');
+      db.prepare('PRAGMA foreign_keys = OFF').run();
+      db.transaction(() => {
+        db.prepare('ALTER TABLE maintenance_logs RENAME TO maintenance_logs_old').run();
+        db.prepare(`
+          CREATE TABLE maintenance_logs (
+            id TEXT PRIMARY KEY,
+            maintenance_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            performed_by TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `).run();
+        const oldLogs = db.prepare('SELECT * FROM maintenance_logs_old').all();
+        const logInsert = db.prepare(
+          'INSERT INTO maintenance_logs (id, maintenance_id, action, performed_by, timestamp, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        oldLogs.forEach(row => logInsert.run(
+          row.id ? String(row.id) : generateUUID(),
+          String(row.maintenance_id),
+          row.action,
+          String(row.performed_by),
+          row.timestamp || new Date().toISOString(),
+          row.created_at || new Date().toISOString()
+        ));
+        db.prepare('DROP TABLE maintenance_logs_old').run();
+      })();
+      db.prepare('PRAGMA foreign_keys = ON').run();
+      console.log('maintenance_logs repaired successfully.');
+    }
+
+    // --- Repair migration: rebuild maintenance_expenses with TEXT PKs if created with old INTEGER PKs ---
+    const meTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='maintenance_expenses'").get();
+    if (meTableDef && meTableDef.sql && meTableDef.sql.includes('INTEGER PRIMARY KEY')) {
+      console.log('Repairing maintenance_expenses: rebuilding with TEXT PKs...');
+      db.prepare('PRAGMA foreign_keys = OFF').run();
+      db.transaction(() => {
+        db.prepare('ALTER TABLE maintenance_expenses RENAME TO maintenance_expenses_old').run();
+        db.prepare(`
+          CREATE TABLE maintenance_expenses (
+            id TEXT PRIMARY KEY,
+            maintenance_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT,
+            receipt_path TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (maintenance_id) REFERENCES maintenance_requests(id) ON DELETE CASCADE
+          )
+        `).run();
+        const oldExp = db.prepare('SELECT * FROM maintenance_expenses_old').all();
+        const expInsert = db.prepare(
+          'INSERT INTO maintenance_expenses (id, maintenance_id, amount, description, receipt_path, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        oldExp.forEach(row => expInsert.run(
+          row.id ? String(row.id) : generateUUID(),
+          String(row.maintenance_id),
+          row.amount,
+          row.description,
+          row.receipt_path,
+          row.created_at || new Date().toISOString()
+        ));
+        db.prepare('DROP TABLE maintenance_expenses_old').run();
+      })();
+      db.prepare('PRAGMA foreign_keys = ON').run();
+      console.log('maintenance_expenses repaired successfully.');
+    }
 
     // Expenses table migration
     const expensesColumns = db.prepare("PRAGMA table_info(expenses)").all();

@@ -49,6 +49,9 @@
       "!**/*.db"
     ],
     "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sql.js/**"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
