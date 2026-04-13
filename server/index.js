@@ -71,6 +71,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/help', require('./routes/help'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/maintenance', require('./routes/maintenance'));
+app.use('/api/ai', require('./routes/ai'));
 
 // Basic Route
 app.get('/api/status', (req, res) => {

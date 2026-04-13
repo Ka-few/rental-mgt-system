@@ -14,6 +14,7 @@ A comprehensive desktop application for managing rental properties, tenants, and
 - **Data Export** - Export reports to Excel for external use
 
 ### Advanced Features
+- **Offline AI Assistant** - Chat with a privacy-focused local AI (powered by Ollama) to instantly query tenants, find debtors, record payments, and log maintenance.
 - **Dashboard Analytics** - Revenue trends and occupancy charts
 - **Search & Filter** - Quickly find tenants by name, ID, or phone
 - **User Management** - Securely change passwords from the Settings page
@@ -42,6 +43,11 @@ A comprehensive desktop application for managing rental properties, tenants, and
    - Username: `admin`
    - Password: `admin123`
    - ⚠️ **Important**: Change the default password after first login
+
+5. **Optional AI Setup** (For the offline AI Assistant):
+   - Install [Ollama](https://ollama.com/) on your system.
+   - Run `ollama pull llama3.1` in your terminal (or `ollama pull llama3.2:1b` for faster speed on older PCs).
+   - Keep the Ollama app running while using the rental software.
 
 ### For Developers
 
@@ -178,8 +184,8 @@ The system supports a hierarchical sync model where a primary **Owner** computer
 
 ### Recommended
 - **OS**: Windows 11, Ubuntu 22.04, or macOS 12+
-- **RAM**: 4GB
-- **Storage**: 500MB free space
+- **RAM**: 8GB (16GB+ if using the local AI assistant)
+- **Storage**: 1GB free space (additional 2GB-5GB needed for AI models)
 - **Display**: 1920x1080 resolution
 
 ## 🐛 Troubleshooting
@@ -214,6 +220,6 @@ Built with modern web technologies and best practices for desktop application de
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: January 2026  
+**Version**: 1.1.0  
+**Last Updated**: April 2026  
 **Developed by**: Ka-few

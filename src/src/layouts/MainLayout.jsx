@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLicense } from '../context/LicenseContext';
 import HelpDrawer from '../components/Help/HelpDrawer';
 import GuidedTour from '../components/Help/GuidedTour';
+import AIChat from '../components/AI/AIChat';
 
 export default function MainLayout() {
     const { logout, user } = useAuth();
@@ -32,6 +33,7 @@ export default function MainLayout() {
             </div>
             <HelpDrawer />
             <GuidedTour />
+            <AIChat />
         </div>
     );
 }
