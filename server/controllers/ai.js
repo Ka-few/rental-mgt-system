@@ -161,6 +161,14 @@ function tool_get_tenants({ status } = {}) {
 
         const rows = db.prepare(query).all(...params);
         if (!rows.length) return { result: 'No tenants found.' };
+
+        // Limit results to avoid massive token usage context timeouts
+        if (rows.length > 15) {
+            return {
+                tenants: rows.slice(0, 15),
+                notice: `Only showing the first 15 tenants out of ${rows.length}. Please ask the user to provide a specific name or query if their tenant is not here.`
+            };
+        }
         return { tenants: rows };
     } catch (err) {
         return { error: `Failed to fetch tenants: ${err.message}` };
@@ -195,6 +203,14 @@ function tool_get_debtors() {
     `).all();
 
         if (!rows.length) return { result: 'No debtors found. All active tenants are up to date!' };
+
+        // Limit results to avoid massive token usage context timeouts
+        if (rows.length > 15) {
+            return {
+                debtors: rows.slice(0, 15),
+                notice: `Only showing the top 15 debtors out of ${rows.length}. Tell the user there are too many to list completely.`
+            };
+        }
         return { debtors: rows };
     } catch (err) {
         return { error: `Failed to fetch debtors: ${err.message}` };

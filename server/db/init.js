@@ -869,6 +869,19 @@ function migrate() {
       console.log('Column property_id added to mri_records.');
     }
 
+    // Add indexes for optimizing AI queries and app dashboard lookups
+    console.log('Creating database indexes...');
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+      CREATE INDEX IF NOT EXISTS idx_tenants_full_name ON tenants(full_name);
+      CREATE INDEX IF NOT EXISTS idx_tenants_house_id ON tenants(house_id);
+      CREATE INDEX IF NOT EXISTS idx_houses_house_number ON houses(house_number);
+      CREATE INDEX IF NOT EXISTS idx_houses_property_id ON houses(property_id);
+      CREATE INDEX IF NOT EXISTS idx_transactions_tenant_id ON transactions(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+    `);
+    console.log('Database indexes applied.');
+
     console.log('Migrations checked/applied.');
   } catch (err) {
     console.error('Migration error:', err);

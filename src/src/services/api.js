@@ -19,9 +19,13 @@ api.interceptors.response.use(
     response => response,
     error => {
         if (error.response && error.response.status === 401) {
+            console.warn(`[API] 401 Unauthorized for: ${error.config.url}. Redirecting to login.`);
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            window.location.href = '/#/login';
+            // Use hash-compliant redirect
+            if (!window.location.hash.includes('/login')) {
+                window.location.hash = '/login';
+            }
         }
         return Promise.reject(error);
     }

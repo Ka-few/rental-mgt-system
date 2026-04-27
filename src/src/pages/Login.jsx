@@ -27,7 +27,8 @@ function Login() {
 
         setIsLoading(true);
         try {
-            await login(username, password);
+            const loggedInUser = await login(username, password);
+            console.log(`[AUTH] Login successful for: ${loggedInUser.username} (${loggedInUser.role})`);
             toast.success('Successfully logged in!');
             // Navigation is handled by the useEffect watching the 'user' state
         } catch (err) {
