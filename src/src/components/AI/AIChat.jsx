@@ -7,7 +7,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { sendAIMessage } from '../../services/aiService';
+import { streamAIMessage } from '../../services/aiService';
 
 // Simple markdown-lite renderer: bold, bullet lists, line breaks
 function renderMarkdown(text) {
@@ -72,14 +72,28 @@ export default function AIChat() {
 
         try {
             const history = buildHistory();
-            const data = await sendAIMessage(trimmed, history);
 
-            const aiMsg = {
+            // Add empty assistant message that will be populated by chunks
+            let aiMsgContent = '';
+            setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: data.response,
+                content: '',
                 ts: new Date()
-            };
-            setMessages(prev => [...prev, aiMsg]);
+            }]);
+
+            await streamAIMessage(trimmed, history, (chunk) => {
+                aiMsgContent += chunk;
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    // update the last message which is the assistant's
+                    newMessages[newMessages.length - 1] = {
+                        ...newMessages[newMessages.length - 1],
+                        content: aiMsgContent
+                    };
+                    return newMessages;
+                });
+            });
+
         } catch (err) {
             const errText = err?.response?.data?.error || 'Something went wrong. Please try again.';
             setError(errText);

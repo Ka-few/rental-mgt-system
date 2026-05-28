@@ -1,27 +1,34 @@
 /**
  * server/controllers/ai.js
- * 
- * AI Controller – handles the Ollama chat & tool-calling agentic loop.
- * 
+ *
+ * AI Controller — supports two providers:
+ *   1. Groq  (AI_PROVIDER=groq)  — fast cloud inference, free tier, requires GROQ_API_KEY
+ *   2. Ollama (AI_PROVIDER=ollama) — local inference, no key needed (default fallback)
+ *
  * Flow:
  *  1. Receive user message via POST /api/ai/chat
- *  2. Build a message array with the system prompt + conversation history
- *  3. POST to Ollama at http://localhost:11434/api/chat (streaming off)
- *  4. If Ollama returns tool_calls, execute the matching SQLite function
- *  5. Append tool results and loop back to step 3 until a final text response
- *  6. Return the final text response to the client
+ *  2. Build messages with system prompt + conversation history
+ *  3. Call chosen provider (streaming)
+ *  4. If Ollama returns tool_calls, execute the SQLite function and loop
+ *     If Groq returns tool_calls, execute the SQLite function and loop
+ *  5. Return final text response to the client via SSE
  */
 
 const axios = require('axios');
 const { db } = require('../db/init');
 const crypto = require('crypto');
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1';
+// ─────────────────────────────────────────
+// Configuration
+// ─────────────────────────────────────────
+const AI_PROVIDER = (process.env.AI_PROVIDER || 'ollama').toLowerCase(); // 'groq' | 'ollama'
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'; // fast Groq-hosted model
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
-// ─────────────────────────────────────────
-// Logger utility for background debugging
-// ─────────────────────────────────────────
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini';
+
 const logAi = (...args) => console.log('[AI Assistant]', ...args);
 const errorAi = (...args) => console.error('[AI Assistant ERROR]', ...args);
 
@@ -42,7 +49,7 @@ RULES:
 - If a tool call fails, explain the issue politely and suggest next steps.`;
 
 // ─────────────────────────────────────────
-// Tool Definitions (sent to Ollama)
+// Tool Definitions
 // ─────────────────────────────────────────
 const TOOLS = [
     {
@@ -68,11 +75,7 @@ const TOOLS = [
         function: {
             name: 'get_debtors',
             description: 'Fetch all tenants who currently have an outstanding balance (debt > 0). Returns tenant name, house, and balance owed.',
-            parameters: {
-                type: 'object',
-                properties: {},
-                required: []
-            }
+            parameters: { type: 'object', properties: {}, required: [] }
         }
     },
     {
@@ -83,23 +86,14 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    tenant_name: {
-                        type: 'string',
-                        description: 'The full name of the tenant (partial match is supported).'
-                    },
-                    amount: {
-                        type: 'number',
-                        description: 'The payment amount in KES.'
-                    },
+                    tenant_name: { type: 'string', description: 'The full name of the tenant (partial match is supported).' },
+                    amount: { type: 'number', description: 'The payment amount in KES.' },
                     payment_method: {
                         type: 'string',
-                        description: 'Payment method, e.g. "MPESA", "Cash", "Bank Transfer".',
+                        description: 'Payment method.',
                         enum: ['MPESA', 'Cash', 'Bank Transfer', 'Cheque']
                     },
-                    reference_code: {
-                        type: 'string',
-                        description: 'Optional MPESA or transaction reference code.'
-                    }
+                    reference_code: { type: 'string', description: 'Optional MPESA or transaction reference code.' }
                 },
                 required: ['tenant_name', 'amount']
             }
@@ -113,23 +107,10 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    house_number: {
-                        type: 'string',
-                        description: 'The house or unit number where the issue is (e.g. "B2", "Unit 5").'
-                    },
-                    title: {
-                        type: 'string',
-                        description: 'A short title for the maintenance issue (e.g. "Leaking sink").'
-                    },
-                    description: {
-                        type: 'string',
-                        description: 'Detailed description of the problem.'
-                    },
-                    priority: {
-                        type: 'string',
-                        description: 'Issue priority level.',
-                        enum: ['Low', 'Normal', 'High', 'Critical']
-                    }
+                    house_number: { type: 'string', description: 'The house or unit number (e.g. "B2", "Unit 5").' },
+                    title: { type: 'string', description: 'Short title for the issue (e.g. "Leaking sink").' },
+                    description: { type: 'string', description: 'Detailed description of the problem.' },
+                    priority: { type: 'string', description: 'Issue priority.', enum: ['Low', 'Normal', 'High', 'Critical'] }
                 },
                 required: ['house_number', 'title', 'description']
             }
@@ -138,12 +119,8 @@ const TOOLS = [
 ];
 
 // ─────────────────────────────────────────
-// Tool Execution – Maps AI calls to SQLite
+// Tool Implementations (SQLite)
 // ─────────────────────────────────────────
-
-/**
- * Fetch tenants, optionally filtered by status
- */
 function tool_get_tenants({ status } = {}) {
     try {
         let query = `
@@ -153,157 +130,74 @@ function tool_get_tenants({ status } = {}) {
       LEFT JOIN properties p ON h.property_id = p.id
     `;
         const params = [];
-        if (status) {
-            query += ' WHERE t.status = ?';
-            params.push(status);
-        }
+        if (status) { query += ' WHERE t.status = ?'; params.push(status); }
         query += ' ORDER BY t.full_name';
-
         const rows = db.prepare(query).all(...params);
         if (!rows.length) return { result: 'No tenants found.' };
-
-        // Limit results to avoid massive token usage context timeouts
-        if (rows.length > 15) {
-            return {
-                tenants: rows.slice(0, 15),
-                notice: `Only showing the first 15 tenants out of ${rows.length}. Please ask the user to provide a specific name or query if their tenant is not here.`
-            };
-        }
+        if (rows.length > 15) return {
+            tenants: rows.slice(0, 15),
+            notice: `Only showing first 15 of ${rows.length} tenants.`
+        };
         return { tenants: rows };
-    } catch (err) {
-        return { error: `Failed to fetch tenants: ${err.message}` };
-    }
+    } catch (err) { return { error: `Failed to fetch tenants: ${err.message}` }; }
 }
 
-/**
- * Fetch all tenants with a positive outstanding balance (charges > payments)
- */
 function tool_get_debtors() {
     try {
         const rows = db.prepare(`
-      SELECT
-        t.id,
-        t.full_name,
-        t.phone,
-        h.house_number,
-        p.name AS property_name,
+      SELECT t.id, t.full_name, t.phone, h.house_number, p.name AS property_name,
         ROUND(
           COALESCE(SUM(CASE WHEN tr.type != 'Payment' THEN tr.amount ELSE 0 END), 0) -
-          COALESCE(SUM(CASE WHEN tr.type  = 'Payment' THEN tr.amount ELSE 0 END), 0),
-          2
+          COALESCE(SUM(CASE WHEN tr.type  = 'Payment' THEN tr.amount ELSE 0 END), 0), 2
         ) AS balance_owed
       FROM tenants t
       LEFT JOIN houses h ON t.house_id = h.id
       LEFT JOIN properties p ON h.property_id = p.id
       LEFT JOIN transactions tr ON tr.tenant_id = t.id
       WHERE t.status = 'Active'
-      GROUP BY t.id
-      HAVING balance_owed > 0
-      ORDER BY balance_owed DESC
+      GROUP BY t.id HAVING balance_owed > 0 ORDER BY balance_owed DESC
     `).all();
-
         if (!rows.length) return { result: 'No debtors found. All active tenants are up to date!' };
-
-        // Limit results to avoid massive token usage context timeouts
-        if (rows.length > 15) {
-            return {
-                debtors: rows.slice(0, 15),
-                notice: `Only showing the top 15 debtors out of ${rows.length}. Tell the user there are too many to list completely.`
-            };
-        }
+        if (rows.length > 15) return {
+            debtors: rows.slice(0, 15),
+            notice: `Only showing top 15 of ${rows.length} debtors.`
+        };
         return { debtors: rows };
-    } catch (err) {
-        return { error: `Failed to fetch debtors: ${err.message}` };
-    }
+    } catch (err) { return { error: `Failed to fetch debtors: ${err.message}` }; }
 }
 
-/**
- * Record a payment transaction for a tenant matched by name (partial)
- */
 function tool_record_payment({ tenant_name, amount, payment_method, reference_code }) {
     try {
-        if (!tenant_name || !amount) {
-            return { error: 'tenant_name and amount are required.' };
-        }
-
-        // Find tenant by partial name match
+        if (!tenant_name || !amount) return { error: 'tenant_name and amount are required.' };
         const tenant = db.prepare(
             `SELECT id, full_name FROM tenants WHERE full_name LIKE ? AND status = 'Active' LIMIT 1`
         ).get(`%${tenant_name}%`);
-
-        if (!tenant) {
-            return { error: `No active tenant found matching "${tenant_name}". Please check the name and try again.` };
-        }
-
+        if (!tenant) return { error: `No active tenant found matching "${tenant_name}".` };
         const paymentId = crypto.randomUUID();
         db.prepare(`
       INSERT INTO transactions (id, tenant_id, type, amount, payment_method, reference_code, description)
       VALUES (?, ?, 'Payment', ?, ?, ?, ?)
-    `).run(
-            paymentId,
-            tenant.id,
-            amount,
-            payment_method || 'Cash',
-            reference_code || null,
-            `AI-recorded payment of KES ${amount}`
-        );
-
-        return {
-            success: true,
-            message: `Payment of KES ${amount} recorded for ${tenant.full_name}.`,
-            transaction_id: paymentId
-        };
-    } catch (err) {
-        return { error: `Failed to record payment: ${err.message}` };
-    }
+    `).run(paymentId, tenant.id, amount, payment_method || 'Cash', reference_code || null, `AI-recorded payment of KES ${amount}`);
+        return { success: true, message: `Payment of KES ${amount} recorded for ${tenant.full_name}.`, transaction_id: paymentId };
+    } catch (err) { return { error: `Failed to record payment: ${err.message}` }; }
 }
 
-/**
- * Create a maintenance request by looking up the house number
- */
 function tool_create_maintenance_request({ house_number, title, description, priority }) {
     try {
-        if (!house_number || !title || !description) {
-            return { error: 'house_number, title, and description are required.' };
-        }
-
-        // Look up house by number (partial match)
+        if (!house_number || !title || !description) return { error: 'house_number, title, and description are required.' };
         const house = db.prepare(
-            `SELECT h.id, h.house_number, p.id AS property_id
-       FROM houses h
-       LEFT JOIN properties p ON h.property_id = p.id
-       WHERE h.house_number LIKE ? LIMIT 1`
+            `SELECT h.id, h.house_number, p.id AS property_id FROM houses h LEFT JOIN properties p ON h.property_id = p.id WHERE h.house_number LIKE ? LIMIT 1`
         ).get(`%${house_number}%`);
-
-        if (!house) {
-            return { error: `No house found matching unit "${house_number}". Please check the unit number.` };
-        }
-
+        if (!house) return { error: `No house found matching "${house_number}".` };
         const requestId = crypto.randomUUID();
         db.prepare(`
-      INSERT INTO maintenance_requests
-        (id, house_id, property_id, title, description, priority, status)
+      INSERT INTO maintenance_requests (id, house_id, property_id, title, description, priority, status)
       VALUES (?, ?, ?, ?, ?, ?, 'Open')
-    `).run(
-            requestId,
-            house.id,
-            house.property_id || null,
-            title,
-            description,
-            priority || 'Normal'
-        );
-
-        return {
-            success: true,
-            message: `Maintenance request "${title}" has been logged for Unit ${house.house_number}.`,
-            request_id: requestId
-        };
-    } catch (err) {
-        return { error: `Failed to create maintenance request: ${err.message}` };
-    }
+    `).run(requestId, house.id, house.property_id || null, title, description, priority || 'Normal');
+        return { success: true, message: `Maintenance request "${title}" logged for Unit ${house.house_number}.`, request_id: requestId };
+    } catch (err) { return { error: `Failed to create maintenance request: ${err.message}` }; }
 }
 
-// Tool dispatch map
 const TOOL_HANDLERS = {
     get_tenants: tool_get_tenants,
     get_debtors: tool_get_debtors,
@@ -311,14 +205,10 @@ const TOOL_HANDLERS = {
     create_maintenance_request: tool_create_maintenance_request
 };
 
-/**
- * Execute one or more tool calls from Ollama and return results
- */
 function executeToolCalls(toolCalls) {
     return toolCalls.map((tc) => {
         const name = tc.function?.name;
         const handler = TOOL_HANDLERS[name];
-
         let result;
         if (!handler) {
             result = { error: `Unknown tool: ${name}` };
@@ -332,27 +222,226 @@ function executeToolCalls(toolCalls) {
                 result = { error: `Tool execution error: ${e.message}` };
             }
         }
-
-        return {
-            role: 'tool',
-            name: name,
-            content: JSON.stringify(result)
-        };
+        return { role: 'tool', name, content: JSON.stringify(result) };
     });
 }
 
 // ─────────────────────────────────────────
-// Main Agent Loop
+// GROQ Provider (OpenAI-compatible, streaming)
 // ─────────────────────────────────────────
+async function runAgentGroq(messages, res) {
+    const MAX_ITERATIONS = 6;
+    const conversationMessages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...messages
+    ];
 
-/**
- * runAgent – sends messages to Ollama and handles the tool-call loop.
- * @param {Array} messages - [ { role: 'user'|'assistant'|'tool', content: string }, ... ]
- * @returns {string} - final text response from the assistant
- */
-async function runAgent(messages) {
-    const MAX_ITERATIONS = 6; // Prevent infinite loops
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+        // Groq uses the OpenAI streaming format
+        const response = await axios.post(
+            `${GROQ_BASE_URL}/chat/completions`,
+            {
+                model: GROQ_MODEL,
+                messages: conversationMessages,
+                tools: TOOLS,
+                tool_choice: 'auto',
+                stream: true,
+                temperature: 0.1,
+                max_tokens: 1024
+            },
+            {
+                responseType: 'stream',
+                timeout: 30000,
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
 
+        let fullContent = '';
+        let toolCallsMap = {};  // index -> {id, name, arguments}
+        let isToolCall = false;
+
+        await new Promise((resolve, reject) => {
+            let buffer = '';
+            response.data.on('data', chunk => {
+                buffer += chunk.toString();
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (let line of lines) {
+                    line = line.trim();
+                    if (!line.startsWith('data: ')) continue;
+                    const dataStr = line.substring(6);
+                    if (dataStr === '[DONE]') continue;
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const delta = parsed.choices?.[0]?.delta;
+                        if (!delta) continue;
+
+                        if (delta.tool_calls) {
+                            isToolCall = true;
+                            delta.tool_calls.forEach(tc => {
+                                const idx = tc.index ?? 0;
+                                if (!toolCallsMap[idx]) {
+                                    toolCallsMap[idx] = { id: tc.id || '', name: '', arguments: '' };
+                                }
+                                if (tc.function?.name) toolCallsMap[idx].name += tc.function.name;
+                                if (tc.function?.arguments) toolCallsMap[idx].arguments += tc.function.arguments;
+                            });
+                        } else if (delta.content) {
+                            fullContent += delta.content;
+                            if (res) res.write(`data: ${JSON.stringify({ text: delta.content })}\n\n`);
+                        }
+                    } catch (e) { /* ignore malformed SSE chunks */ }
+                }
+            });
+            response.data.on('end', resolve);
+            response.data.on('error', reject);
+        });
+
+        if (isToolCall && Object.keys(toolCallsMap).length > 0) {
+            const toolCallsArray = Object.values(toolCallsMap).map(tc => ({
+                id: tc.id,
+                type: 'function',
+                function: { name: tc.name, arguments: tc.arguments }
+            }));
+
+            logAi(`Groq requested ${toolCallsArray.length} tool call(s): ${toolCallsArray.map(t => t.function.name).join(', ')}`);
+
+            // Append assistant message with tool_calls for Groq's message format
+            conversationMessages.push({
+                role: 'assistant',
+                content: null,
+                tool_calls: toolCallsArray
+            });
+
+            // Execute tools and append results in OpenAI tool-result format
+            const toolResults = toolCallsArray.map((tc) => {
+                const name = tc.function?.name;
+                const handler = TOOL_HANDLERS[name];
+                let result;
+                if (!handler) {
+                    result = { error: `Unknown tool: ${name}` };
+                } else {
+                    try {
+                        const args = typeof tc.function.arguments === 'string'
+                            ? JSON.parse(tc.function.arguments)
+                            : tc.function.arguments;
+                        result = handler(args || {});
+                    } catch (e) {
+                        result = { error: `Tool execution error: ${e.message}` };
+                    }
+                }
+                return {
+                    role: 'tool',
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(result)
+                };
+            });
+
+            conversationMessages.push(...toolResults);
+            continue;
+        }
+
+        return fullContent || 'I could not generate a response.';
+    }
+
+    return 'I was unable to complete your request after several attempts.';
+}
+
+// ─────────────────────────────────────────
+// Context Injection Fallback (for Ollama models that don't support tools)
+// ─────────────────────────────────────────
+function buildContextFromKeywords(userMessage) {
+    const msg = userMessage.toLowerCase();
+    const lines = [];
+
+    if (/debt|owe|arrear|unpaid|balance|behind|haven|due/i.test(msg)) {
+        const data = tool_get_debtors();
+        if (data.debtors && data.debtors.length) {
+            lines.push('DEBTORS (tenants who owe rent):');
+            data.debtors.slice(0, 8).forEach(d =>
+                lines.push(`- ${d.full_name} | Unit ${d.house_number} | Owes KES ${d.balance_owed}`)
+            );
+        } else {
+            lines.push('DEBTORS: None. All active tenants are up to date.');
+        }
+    }
+
+    if (/tenant|occupant|resident|list/i.test(msg)) {
+        const filter = /active/i.test(msg) ? { status: 'Active' } : {};
+        const data = tool_get_tenants(filter);
+        if (data.tenants && data.tenants.length) {
+            lines.push('TENANTS:');
+            data.tenants.slice(0, 8).forEach(t =>
+                lines.push(`- ${t.full_name} | Unit ${t.house_number} | ${t.status} | Phone: ${t.phone || 'N/A'}`)
+            );
+        } else {
+            lines.push('TENANTS: No tenants found.');
+        }
+    }
+
+    return lines.length
+        ? lines.join('\n')
+        : 'No specific data pre-fetched. Answer based on your knowledge of rental management.';
+}
+
+async function runAgentNoTools(messages, res) {
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    const dbContext = lastUser ? buildContextFromKeywords(lastUser.content) : '';
+
+    const contextSystemPrompt =
+        `You are a rental property management assistant for a Kenyan business. ` +
+        `Answer the user's question using ONLY the data below. Format currency as KES. Be concise.\n\n` +
+        `LIVE DATA:\n${dbContext}`;
+
+    const response = await axios.post(
+        `${OLLAMA_BASE_URL}/api/chat`,
+        {
+            model: OLLAMA_MODEL,
+            messages: [
+                { role: 'system', content: contextSystemPrompt },
+                ...messages.slice(-2)
+            ],
+            stream: true,
+            keep_alive: '1h',
+            options: { temperature: 0.1, num_ctx: 2048 }
+        },
+        { responseType: 'stream', timeout: 120000 }
+    );
+
+    let fullContent = '';
+    await new Promise((resolve, reject) => {
+        let buffer = '';
+        response.data.on('data', chunk => {
+            buffer += chunk.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (let line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.message?.content) {
+                        fullContent += parsed.message.content;
+                        if (res) res.write(`data: ${JSON.stringify({ text: parsed.message.content })}\n\n`);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        });
+        response.data.on('end', resolve);
+        response.data.on('error', reject);
+    });
+
+    return fullContent || 'I could not generate a response.';
+}
+
+// ─────────────────────────────────────────
+// Ollama Provider (local, with tool-call loop)
+// ─────────────────────────────────────────
+async function runAgentOllama(messages, res) {
+    const MAX_ITERATIONS = 6;
     const conversationMessages = [
         { role: 'system', content: SYSTEM_PROMPT },
         ...messages
@@ -366,57 +455,98 @@ async function runAgent(messages) {
                     model: OLLAMA_MODEL,
                     messages: conversationMessages,
                     tools: TOOLS,
-                    stream: false,
-                    keep_alive: '1h', // Keep model in RAM for 1 hour to prevent cold starts on subsequent requests
-                    options: {
-                        temperature: 0.1, // Low temperature for more deterministic tool usage
-                        num_ctx: 4096 // Bound context size to improve inference speed 
-                    }
+                    stream: true,
+                    keep_alive: '1h',
+                    options: { temperature: 0.1, num_ctx: 2048 }
                 },
-                { timeout: 300000 } // 5 minute timeout for slow models/initial load
+                { responseType: 'stream', timeout: 120000 }
             );
 
-            const assistantMessage = response.data?.message;
-            if (!assistantMessage) {
-                throw new Error('Ollama returned an unexpected empty response.');
-            }
+            let isToolCall = false;
+            let fullContent = '';
+            let assistantMessage = { role: 'assistant', content: '', tool_calls: [] };
 
-            // Always append the assistant's message for context
+            await new Promise((resolve, reject) => {
+                let buffer = '';
+                response.data.on('data', chunk => {
+                    buffer += chunk.toString();
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (let line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const parsed = JSON.parse(line);
+                            const msg = parsed.message;
+                            if (!msg) continue;
+                            if (msg.tool_calls && msg.tool_calls.length > 0) {
+                                isToolCall = true;
+                                msg.tool_calls.forEach((tc, idx) => {
+                                    const tidx = tc.index !== undefined ? tc.index : idx;
+                                    if (!assistantMessage.tool_calls[tidx]) {
+                                        assistantMessage.tool_calls[tidx] = { type: 'function', function: { name: '', arguments: '' } };
+                                    }
+                                    if (tc.function?.name) assistantMessage.tool_calls[tidx].function.name += tc.function.name;
+                                    if (tc.function?.arguments !== undefined) {
+                                        if (typeof tc.function.arguments === 'object') {
+                                            assistantMessage.tool_calls[tidx].function.arguments = tc.function.arguments;
+                                        } else {
+                                            assistantMessage.tool_calls[tidx].function.arguments += tc.function.arguments;
+                                        }
+                                    }
+                                });
+                            } else if (msg.content) {
+                                fullContent += msg.content;
+                                if (!isToolCall && res) res.write(`data: ${JSON.stringify({ text: msg.content })}\n\n`);
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                });
+                response.data.on('end', resolve);
+                response.data.on('error', reject);
+            });
+
+            if (fullContent) assistantMessage.content = fullContent;
             conversationMessages.push(assistantMessage);
 
-            // Check if the model wants to call tools
-            if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+            if (isToolCall && assistantMessage.tool_calls.length > 0) {
                 logAi(`Model requested ${assistantMessage.tool_calls.length} tool call(s)`);
                 const toolResults = executeToolCalls(assistantMessage.tool_calls);
                 conversationMessages.push(...toolResults);
-                // Continue the loop with tool results fed back
                 continue;
             }
 
-            // No tool calls – we have the final text response
-            return assistantMessage.content || 'I could not generate a response. Please try again.';
+            return assistantMessage.content || 'I could not generate a response.';
+
         } catch (err) {
-            if (err.response) {
-                errorAi(`Ollama API returned ${err.response.status}:`, err.response.data);
-                if (err.response.data?.error) {
-                    throw new Error(`Ollama Error: ${err.response.data.error}`);
-                }
+            const status = err.response?.status;
+            errorAi(`Ollama API returned ${status || err.code}`);
+            if (status === 400 && i === 0) {
+                logAi('Model does not support tool calling. Switching to context-injection fallback...');
+                return await runAgentNoTools(messages, res);
             }
             throw err;
         }
     }
 
-    return 'I was unable to complete your request after several attempts. Please try rephrasing your question.';
+    return 'I was unable to complete your request after several attempts.';
+}
+
+// ─────────────────────────────────────────
+// Main runAgent – dispatches to correct provider
+// ─────────────────────────────────────────
+async function runAgent(messages, res) {
+    if (AI_PROVIDER === 'groq') {
+        if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY is not set in server/.env. Please add it to use Groq.');
+        logAi(`Using Groq provider (model: ${GROQ_MODEL})`);
+        return await runAgentGroq(messages, res);
+    }
+    logAi(`Using Ollama provider (model: ${OLLAMA_MODEL})`);
+    return await runAgentOllama(messages, res);
 }
 
 // ─────────────────────────────────────────
 // Express Route Handler
 // ─────────────────────────────────────────
-
-/**
- * POST /api/ai/chat
- * Body: { messages: [{role, content}], userInput: string }
- */
 async function chatHandler(req, res) {
     try {
         const { messages = [], userInput } = req.body;
@@ -425,43 +555,46 @@ async function chatHandler(req, res) {
             return res.status(400).json({ error: 'userInput or messages array is required.' });
         }
 
-        // Build a clean message history for the agent
         let history = userInput
             ? [...messages, { role: 'user', content: userInput }]
             : messages;
 
-        // OPTIMIZATION: Keep only the most recent 6 messages to reduce token processing time
-        if (history.length > 6) {
-            history = history.slice(-6);
-        }
+        if (history.length > 6) history = history.slice(-6);
 
-        const finalResponse = await runAgent(history);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
 
-        return res.json({
-            response: finalResponse,
-            // Return the user message for the client to maintain history easily
-            userMessage: userInput || messages[messages.length - 1]?.content
-        });
+        await runAgent(history, res);
+
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+
     } catch (err) {
         console.error('[AI Controller] Error:', err.message);
 
-        // Friendly error for when Ollama is not running
+        if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+            res.write(`data: [DONE]\n\n`);
+            res.end();
+            return;
+        }
+
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-            return res.status(503).json({
-                error: 'AI service is unavailable. Please ensure Ollama is running on this machine (run: ollama serve).'
-            });
+            return res.status(503).json({ error: 'AI service is unavailable. Please ensure Ollama is running (run: ollama serve).' });
         }
-
-        if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-            return res.status(504).json({
-                error: 'The AI model took too long to respond. It might be loading into memory or processing a complex query. Please try again.'
-            });
+        if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+            return res.status(504).json({ error: 'The AI model took too long to respond. Please try again.' });
         }
-
         if (err.response?.status === 404) {
-            return res.status(404).json({
-                error: `Model "${OLLAMA_MODEL}" not found in Ollama. Run: ollama pull ${OLLAMA_MODEL}`
-            });
+            return res.status(404).json({ error: `Model not found. Check your AI_PROVIDER and model settings in server/.env` });
+        }
+        if (err.response?.status === 401) {
+            return res.status(401).json({ error: 'Invalid API key. Please check GROQ_API_KEY in server/.env' });
+        }
+        if (err.response?.status === 429) {
+            return res.status(429).json({ error: 'AI rate limit reached. Please wait a moment and try again.' });
         }
 
         return res.status(500).json({ error: 'An error occurred while processing your AI request.' });
