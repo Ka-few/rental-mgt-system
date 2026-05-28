@@ -64,6 +64,7 @@ app.use(authenticate);
 app.use('/api/tenants', require('./routes/tenants'));
 app.use('/api/properties', require('./routes/properties'));
 app.use('/api/finance', require('./routes/finance'));
+app.use('/api/accounting', require('./routes/accounting'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/mri', require('./routes/mri'));

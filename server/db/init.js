@@ -204,6 +204,7 @@ async function initializeDatabase() {
   seedSettings();
   seedAdminUser();
   seedHelpContent();
+  seedAccounts();
   console.log('Database Schema Applied & Default Settings Seeded Successfully.');
 }
 
@@ -260,7 +261,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
+    type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit', 'Maintenance')),
     amount REAL NOT NULL,
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
@@ -375,6 +376,32 @@ const schema = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL CHECK(type IN ('Asset', 'Liability', 'Equity', 'Revenue', 'Expense')),
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    date DATE DEFAULT (date('now')),
+    memo TEXT NOT NULL,
+    reference_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS journal_lines (
+    id TEXT PRIMARY KEY,
+    journal_entry_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('debit', 'credit')),
+    amount REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+  );
 
 `;
 
@@ -480,6 +507,30 @@ function seedAdminUser() {
   }
 }
 
+function seedAccounts() {
+  console.log('Seeding default chart of accounts...');
+  const defaultAccounts = [
+    { id: generateUUID(), name: 'Cash', type: 'Asset', description: 'Cash on hand' },
+    { id: generateUUID(), name: 'Bank', type: 'Asset', description: 'Bank account balance' },
+    { id: generateUUID(), name: 'Accounts Receivable', type: 'Asset', description: 'Unpaid tenant rent' },
+    { id: generateUUID(), name: 'Properties', type: 'Asset', description: 'Value of properties' },
+    { id: generateUUID(), name: 'Payables', type: 'Liability', description: 'Money owed to vendors' },
+    { id: generateUUID(), name: 'Unearned Rent', type: 'Liability', description: 'Rent paid in advance' },
+    { id: generateUUID(), name: 'Loans', type: 'Liability', description: 'Bank loans' },
+    { id: generateUUID(), name: 'Capital', type: 'Equity', description: 'Owner capital' },
+    { id: generateUUID(), name: 'Retained Earnings', type: 'Equity', description: 'Retained earnings' },
+    { id: generateUUID(), name: 'Rental Income', type: 'Revenue', description: 'Income from rent' },
+    { id: generateUUID(), name: 'Late Fees', type: 'Revenue', description: 'Income from penalties' },
+    { id: generateUUID(), name: 'Maintenance Expense', type: 'Expense', description: 'Property maintenance costs' },
+    { id: generateUUID(), name: 'Utilities Expense', type: 'Expense', description: 'Water and electricity' },
+    { id: generateUUID(), name: 'Salaries Expense', type: 'Expense', description: 'Staff salaries' },
+    { id: generateUUID(), name: 'Other Expense', type: 'Expense', description: 'Miscellaneous expenses' }
+  ];
+
+  const stmt = db.prepare('INSERT OR IGNORE INTO accounts (id, name, type, description) VALUES (?, ?, ?, ?)');
+  defaultAccounts.forEach(a => stmt.run(a.id, a.name, a.type, a.description));
+}
+
 function migrate() {
   console.log('Checking for migrations...');
   try {
@@ -518,17 +569,17 @@ function migrate() {
       db.prepare("ALTER TABLE tenants ADD COLUMN agreement_path TEXT").run();
     }
 
-    // Migration for transactions Check Constraint (allow 'Deposit')
+    // Migration for transactions Check Constraint (allow 'Deposit' and 'Maintenance')
     const transactionsDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'").get();
-    if (transactionsDef && !transactionsDef.sql.includes("'Deposit'")) {
-      console.log("Migrating transactions table to include 'Deposit' type...");
+    if (transactionsDef && (!transactionsDef.sql.includes("'Deposit'") || !transactionsDef.sql.includes("'Maintenance'"))) {
+      console.log("Migrating transactions table to include updated types...");
       const migrateTransactions = db.transaction(() => {
         db.prepare("ALTER TABLE transactions RENAME TO transactions_old").run();
         db.prepare(`
               CREATE TABLE transactions (
                 id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit')),
+                type TEXT NOT NULL CHECK(type IN ('Rent Charge', 'Water Bill', 'Garbage', 'Security', 'Payment', 'Adjustment', 'Deposit', 'Maintenance')),
                 amount REAL NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 description TEXT,
@@ -577,6 +628,19 @@ function migrate() {
         `).run();
     }
 
+    if (!mrColumnNames.includes('tenant_id')) {
+      console.log("Adding tenant_id to Maintenance columns...");
+      db.prepare("ALTER TABLE maintenance_requests ADD COLUMN tenant_id TEXT").run();
+    }
+
+    // Always run this on startup to ensure existing requests have a tenant
+    console.log("Populating missing tenant_id for maintenance requests...");
+    db.prepare(`
+        UPDATE maintenance_requests 
+        SET tenant_id = (SELECT id FROM tenants WHERE house_id = maintenance_requests.house_id AND status = 'Active' LIMIT 1)
+        WHERE tenant_id IS NULL
+    `).run();
+
     // Check if status constraint needs expansion OR if id type needs to be TEXT
     const mrTableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='maintenance_requests'").get();
     const mrNeedsMigration = mrTableInfo && (
@@ -593,6 +657,7 @@ function migrate() {
                     id TEXT PRIMARY KEY,
                     property_id TEXT,
                     house_id TEXT NOT NULL,
+                    tenant_id TEXT,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL,
                     priority TEXT DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
@@ -617,8 +682,8 @@ function migrate() {
         const insertStmt = db.prepare(`
                 INSERT INTO maintenance_requests (
                     id, house_id, description, priority, status, cost, reported_date, completed_date, 
-                    property_id, title, issue_image_path, receipt_image_path, approved_by_user_id, approved_at, rejection_note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    property_id, tenant_id, title, issue_image_path, receipt_image_path, approved_by_user_id, approved_at, rejection_note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
         const validStatuses = ['Open', 'In Progress', 'Pending Approval', 'Completed', 'Rejected'];
@@ -636,6 +701,7 @@ function migrate() {
             row.reported_date,
             row.completed_date,
             row.property_id ? String(row.property_id) : null,
+            row.tenant_id ? String(row.tenant_id) : null,
             row.title || 'Untitled Issue',
             row.issue_image_path || null,
             row.receipt_image_path || null,

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, generateUUID } = require('../db/init');
 const { authorizeAdmin } = require('../middleware/auth');
+const { recordJournalEntry, getAccountByName } = require('../controllers/accounting');
 
 router.use(authorizeAdmin);
 
@@ -55,6 +56,19 @@ router.post('/', (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
         stmt.run(id, property_id || null, category, Number(amount), description || '', payment_method || 'Cash', date || new Date().toISOString().split('T')[0]);
+
+        try {
+            const expAccMatch = category + ' Expense';
+            const expAcc = getAccountByName(expAccMatch) || getAccountByName('Other Expense') || getAccountByName('Maintenance Expense');
+            const cashAcc = getAccountByName(payment_method === 'Bank' ? 'Bank' : 'Cash');
+            if (expAcc && cashAcc) {
+                recordJournalEntry(date || new Date().toISOString(), `Expense: ${category} - ${description}`, id, [
+                    { account_id: expAcc.id, type: 'debit', amount: Number(amount) },
+                    { account_id: cashAcc.id, type: 'credit', amount: Number(amount) }
+                ]);
+            }
+        } catch (jeErr) { console.error('Journal entry failed:', jeErr); }
+
         res.json({ id, message: 'Expense recorded successfully' });
     } catch (err) {
         console.error('ADD EXPENSE ERROR:', err);

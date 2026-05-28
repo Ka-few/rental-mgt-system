@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { getBalances, recordPayment, addCharge, getTransactions, updateTransaction, runMonthlyRent, applyPenalties } from '../services/financeService';
+import { getProfitAndLoss, getBalanceSheet, getJournalEntries } from '../services/accountingService';
 import { getTenants } from '../services/tenantService';
 import { getProperties } from '../services/propertyService';
 import { useToast } from '../context/ToastContext';
@@ -448,10 +449,186 @@ const HistoryModal = ({ isOpen, onClose, tenant, balances, companySettings, refr
     );
 };
 
+// --- REPORT COMPONENTS ---
+
+const ProfitAndLoss = () => {
+    const [data, setData] = useState(null);
+    useEffect(() => { getProfitAndLoss().then(setData).catch(console.error); }, []);
+    if (!data) return <div>Loading...</div>;
+
+    const revenues = data.accounts.filter(a => a.type === 'Revenue');
+    const expenses = data.accounts.filter(a => a.type === 'Expense');
+
+    return (
+        <div className="bg-white p-6 rounded shadow border border-gray-200">
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Profit & Loss Statement</h2>
+            <div className="mb-6">
+                <h3 className="font-semibold text-lg text-green-700 bg-green-50 p-2 rounded">Revenue</h3>
+                <div className="divide-y mt-2">
+                    {revenues.map(r => (
+                        <div key={r.id} className="flex justify-between py-2 px-4">
+                            <span>{r.name}</span>
+                            <span className="font-medium text-gray-700">{r.balance.toLocaleString()} KES</span>
+                        </div>
+                    ))}
+                    <div className="flex justify-between py-2 px-4 font-bold bg-gray-50 border-t">
+                        <span>Total Revenue</span>
+                        <span className="text-green-700">{data.totalRevenue.toLocaleString()} KES</span>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3 className="font-semibold text-lg text-red-700 bg-red-50 p-2 rounded">Expenses</h3>
+                <div className="divide-y mt-2">
+                    {expenses.map(e => (
+                        <div key={e.id} className="flex justify-between py-2 px-4">
+                            <span>{e.name}</span>
+                            <span className="font-medium text-gray-700">{e.balance.toLocaleString()} KES</span>
+                        </div>
+                    ))}
+                    <div className="flex justify-between py-2 px-4 font-bold bg-gray-50 border-t">
+                        <span>Total Expenses</span>
+                        <span className="text-red-700">{data.totalExpense.toLocaleString()} KES</span>
+                    </div>
+                </div>
+            </div>
+            <div className="mt-6 border-t-[3px] border-gray-800 pt-4 flex justify-between">
+                <h3 className="text-xl font-bold">Net Income</h3>
+                <span className={`text-xl font-bold ${data.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {data.netIncome.toLocaleString()} KES
+                </span>
+            </div>
+        </div>
+    );
+};
+
+const BalanceSheet = () => {
+    const [data, setData] = useState(null);
+    useEffect(() => { getBalanceSheet().then(setData).catch(console.error); }, []);
+    if (!data) return <div>Loading...</div>;
+
+    const assets = data.accounts.filter(a => a.type === 'Asset');
+    const liabilities = data.accounts.filter(a => a.type === 'Liability');
+    const equity = data.accounts.filter(a => a.type === 'Equity');
+
+    return (
+        <div className="bg-white p-6 rounded shadow border border-gray-200">
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Balance Sheet</h2>
+
+            <div className="mb-6">
+                <h3 className="font-semibold text-lg text-blue-700 bg-blue-50 p-2 rounded">Assets</h3>
+                <div className="divide-y mt-2">
+                    {assets.map(a => (
+                        <div key={a.id} className="flex justify-between py-2 px-4">
+                            <span>{a.name}</span>
+                            <span className="font-medium text-gray-700">{a.balance.toLocaleString()} KES</span>
+                        </div>
+                    ))}
+                    <div className="flex justify-between py-2 px-4 font-bold bg-gray-50 border-t">
+                        <span>Total Assets</span>
+                        <span className="text-blue-700">{data.totalAssets.toLocaleString()} KES</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <h3 className="font-semibold text-lg text-orange-700 bg-orange-50 p-2 rounded">Liabilities</h3>
+                    <div className="divide-y mt-2">
+                        {liabilities.map(l => (
+                            <div key={l.id} className="flex justify-between py-2 px-4">
+                                <span>{l.name}</span>
+                                <span className="font-medium text-gray-700">{l.balance.toLocaleString()} KES</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between py-2 px-4 font-bold bg-gray-50 border-t">
+                            <span>Total Liabilities</span>
+                            <span className="text-orange-700">{data.totalLiabilities.toLocaleString()} KES</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 className="font-semibold text-lg text-purple-700 bg-purple-50 p-2 rounded">Equity</h3>
+                    <div className="divide-y mt-2">
+                        {equity.map(e => (
+                            <div key={e.id} className="flex justify-between py-2 px-4">
+                                <span>{e.name}</span>
+                                <span className="font-medium text-gray-700">{e.balance.toLocaleString()} KES</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between py-2 px-4 text-gray-600 italic">
+                            <span>Current Year Earnings</span>
+                            <span>{data.netIncome.toLocaleString()} KES</span>
+                        </div>
+                        <div className="flex justify-between py-2 px-4 font-bold bg-gray-50 border-t">
+                            <span>Total Equity</span>
+                            <span className="text-purple-700">{(data.totalEquity + data.netIncome).toLocaleString()} KES</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t-[3px] border-gray-800 pt-4 flex justify-between">
+                <h3 className="text-lg font-bold">Total Liab. & Equity</h3>
+                <span className="text-lg font-bold">
+                    {(data.totalLiabilities + data.totalEquity + data.netIncome).toLocaleString()} KES
+                </span>
+            </div>
+        </div>
+    );
+};
+
+const JournalEntries = () => {
+    const [entries, setEntries] = useState([]);
+    useEffect(() => { getJournalEntries().then(setEntries).catch(console.error); }, []);
+
+    return (
+        <div className="bg-white rounded shadow p-6">
+            <h2 className="text-xl font-bold mb-4">General Journal</h2>
+            <div className="space-y-6">
+                {entries.map(entry => (
+                    <div key={entry.id} className="border rounded p-4 border-gray-200">
+                        <div className="flex justify-between mb-2 pb-2 border-b">
+                            <span className="text-sm font-bold text-gray-600">{new Date(entry.date).toLocaleString()}</span>
+                            <span className="text-sm italic text-gray-500">{entry.memo}</span>
+                        </div>
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-left text-gray-500 border-b">
+                                    <th className="pb-1 w-1/2">Account</th>
+                                    <th className="pb-1 text-right">Debit</th>
+                                    <th className="pb-1 text-right">Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {entry.lines.map(line => (
+                                    <tr key={line.id} className="border-t border-gray-50">
+                                        <td className={`py-1 ${line.type === 'credit' ? 'pl-8 text-gray-600' : 'font-medium'}`}>
+                                            {line.account_name}
+                                        </td>
+                                        <td className="py-1 text-right">
+                                            {line.type === 'debit' ? line.amount.toLocaleString() : ''}
+                                        </td>
+                                        <td className="py-1 text-right">
+                                            {line.type === 'credit' ? line.amount.toLocaleString() : ''}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 // --- Main Finance Component ---
 
 export default function Finance() {
     const toast = useToast();
+    const [activeTab, setActiveTab] = useState('Balances');
     const [balances, setBalances] = useState([]);
     const [tenants, setTenants] = useState([]);
     const [companySettings, setCompanySettings] = useState({});
@@ -535,7 +712,31 @@ export default function Finance() {
                 </div>
             </div>
 
-            <BalanceTable balances={balances} onViewHistory={handleViewHistory} />
+            <div className="mb-6 flex space-x-2 border-b pb-2">
+                <button
+                    className={`pb-2 px-4 font-semibold ${activeTab === 'Balances' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+                    onClick={() => setActiveTab('Balances')}
+                >Tenant Balances</button>
+                {/* Accounting features hidden for now
+                <button
+                    className={`pb-2 px-4 font-semibold ${activeTab === 'P&L' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+                    onClick={() => setActiveTab('P&L')}
+                >Profit & Loss</button>
+                <button
+                    className={`pb-2 px-4 font-semibold ${activeTab === 'BalanceSheet' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+                    onClick={() => setActiveTab('BalanceSheet')}
+                >Balance Sheet</button>
+                <button
+                    className={`pb-2 px-4 font-semibold ${activeTab === 'Journal' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+                    onClick={() => setActiveTab('Journal')}
+                >General Journal</button>
+                */}
+            </div>
+
+            {activeTab === 'Balances' && <BalanceTable balances={balances} onViewHistory={handleViewHistory} />}
+            {activeTab === 'P&L' && <ProfitAndLoss />}
+            {activeTab === 'BalanceSheet' && <BalanceSheet />}
+            {activeTab === 'Journal' && <JournalEntries />}
 
             <RecordPaymentModal
                 isOpen={isPayModalOpen}
@@ -559,6 +760,6 @@ export default function Finance() {
                 companySettings={companySettings}
                 refreshBalances={loadData}
             />
-        </div>
+        </div >
     );
 }

@@ -270,6 +270,7 @@ export default function Maintenance() {
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-semibold text-slate-700">{req.property_name}</div>
                                         <div className="text-xs text-gray-400">Unit: {req.house_number}</div>
+                                        {req.tenant_name && <div className="text-[10px] text-blue-500 font-bold mt-1">By: {req.tenant_name}</div>}
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`text-xs font-black ${getPriorityBadgeClass(req.priority)}`}>
@@ -493,6 +494,12 @@ export default function Maintenance() {
                                             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Property & Unit</label>
                                             <div className="text-sm font-bold text-slate-800">{selectedRequest.property_name}</div>
                                             <div className="text-xs text-gray-500">Unit: {selectedRequest.house_number}</div>
+                                            {selectedRequest.tenant_name && (
+                                                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-100">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Reported By</span>
+                                                    <div className="text-xs font-bold text-blue-700">{selectedRequest.tenant_name}</div>
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Priority</label>

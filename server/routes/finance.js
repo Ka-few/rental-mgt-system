@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db, generateUUID } = require('../db/init');
+const { recordJournalEntry, getAccountByName } = require('../controllers/accounting');
 
 // Get transactions for a tenant
 router.get('/tenant/:id', (req, res) => {
@@ -25,6 +26,18 @@ router.post('/payment', (req, res) => {
             VALUES (?, ?, 'Payment', ?, ?, ?, ?, ?)
         `);
         stmt.run(id, tenant_id, amount, description, payment_method, reference_code, date || new Date().toISOString());
+
+        try {
+            const cashAcc = getAccountByName('Cash');
+            const arAcc = getAccountByName('Accounts Receivable');
+            if (cashAcc && arAcc) {
+                recordJournalEntry(date || new Date().toISOString(), 'Tenant Payment: ' + description, id, [
+                    { account_id: cashAcc.id, type: 'debit', amount: Number(amount) },
+                    { account_id: arAcc.id, type: 'credit', amount: Number(amount) }
+                ]);
+            }
+        } catch (jeErr) { console.error('Journal entry failed:', jeErr); }
+
         res.json({ id, success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -44,6 +57,20 @@ router.post('/charge', (req, res) => {
             VALUES (?, ?, ?, ?, ?)
         `);
         stmt.run(id, tenant_id, type, amount, description);
+
+        try {
+            const arAcc = getAccountByName('Accounts Receivable');
+            let revAcc = getAccountByName('Rental Income');
+            if (type === 'Adjustment') revAcc = getAccountByName('Late Fees');
+
+            if (arAcc && revAcc) {
+                recordJournalEntry(new Date().toISOString(), type + ': ' + description, id, [
+                    { account_id: arAcc.id, type: 'debit', amount: Number(amount) },
+                    { account_id: revAcc.id, type: 'credit', amount: Number(amount) }
+                ]);
+            }
+        } catch (jeErr) { console.error('Journal entry failed:', jeErr); }
+
         res.json({ id, success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -102,8 +129,19 @@ router.post('/rent-run', (req, res) => {
         const date = new Date().toISOString();
 
         db.transaction(() => {
+            const arAcc = getAccountByName('Accounts Receivable');
+            const revAcc = getAccountByName('Rental Income');
+
             for (const tenant of activeTenants) {
-                insertStmt.run(generateUUID(), tenant.id, tenant.rent_amount, description, date);
+                const id = generateUUID();
+                insertStmt.run(id, tenant.id, tenant.rent_amount, description, date);
+
+                if (arAcc && revAcc) {
+                    recordJournalEntry(date, description, id, [
+                        { account_id: arAcc.id, type: 'debit', amount: Number(tenant.rent_amount) },
+                        { account_id: revAcc.id, type: 'credit', amount: Number(tenant.rent_amount) }
+                    ]);
+                }
             }
         })();
 
@@ -137,10 +175,21 @@ router.post('/rent-run', (req, res) => {
                 const penaltyDate = new Date().toISOString();
 
                 db.transaction(() => {
+                    const arAcc = getAccountByName('Accounts Receivable');
+                    const lateAcc = getAccountByName('Late Fees');
+
                     for (const tenant of lateTenants) {
                         const amount = settings.penalty_type === 'Fixed' ? parseFloat(settings.penalty_amount) : Math.abs(tenant.balance) * (parseFloat(settings.penalty_amount) / 100);
                         if (amount > 0) {
-                            penaltyStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${month}`, penaltyDate);
+                            const pId = generateUUID();
+                            penaltyStmt.run(pId, tenant.id, amount, `Late Payment Penalty - ${month}`, penaltyDate);
+
+                            if (arAcc && lateAcc) {
+                                recordJournalEntry(penaltyDate, `Late Payment Penalty - ${month}`, pId, [
+                                    { account_id: arAcc.id, type: 'debit', amount },
+                                    { account_id: lateAcc.id, type: 'credit', amount }
+                                ]);
+                            }
                         }
                     }
                 })();
@@ -267,6 +316,9 @@ router.post('/apply-penalties', (req, res) => {
         const month = new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' });
 
         db.transaction(() => {
+            const arAcc = getAccountByName('Accounts Receivable');
+            const lateAcc = getAccountByName('Late Fees');
+
             for (const tenant of activeTenants) {
                 let amount = 0;
                 const balanceVal = tenant.balance || 0;
@@ -279,8 +331,16 @@ router.post('/apply-penalties', (req, res) => {
                 }
 
                 if (amount > 0) {
-                    insertStmt.run(generateUUID(), tenant.id, amount, `Late Payment Penalty - ${month}`, date);
+                    const pId = generateUUID();
+                    insertStmt.run(pId, tenant.id, amount, `Late Payment Penalty - ${month}`, date);
                     appliedCount++;
+
+                    if (arAcc && lateAcc) {
+                        recordJournalEntry(date, `Late Payment Penalty - ${month}`, pId, [
+                            { account_id: arAcc.id, type: 'debit', amount },
+                            { account_id: lateAcc.id, type: 'credit', amount }
+                        ]);
+                    }
                 }
             }
         })();

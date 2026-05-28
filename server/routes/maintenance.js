@@ -52,11 +52,12 @@ router.get('/', (req, res) => {
     try {
         const { property_id, status } = req.query;
         let query = `
-            SELECT mr.*, p.name as property_name, h.house_number, u.username as approved_by_name
+            SELECT mr.*, p.name as property_name, h.house_number, u.username as approved_by_name, t.full_name as tenant_name
             FROM maintenance_requests mr
             LEFT JOIN properties p ON mr.property_id = p.id
             LEFT JOIN houses h ON mr.house_id = h.id
             LEFT JOIN users u ON mr.approved_by_user_id = u.id
+            LEFT JOIN tenants t ON mr.tenant_id = t.id
         `;
         let params = [];
         let conditions = [];
@@ -88,10 +89,11 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
     try {
         const request = db.prepare(`
-            SELECT mr.*, p.name as property_name, h.house_number
+            SELECT mr.*, p.name as property_name, h.house_number, t.full_name as tenant_name
             FROM maintenance_requests mr
             LEFT JOIN properties p ON mr.property_id = p.id
             LEFT JOIN houses h ON mr.house_id = h.id
+            LEFT JOIN tenants t ON mr.tenant_id = t.id
             WHERE mr.id = ?
         `).get(req.params.id);
 
@@ -131,12 +133,16 @@ router.post('/', upload.single('issue_image'), (req, res) => {
             const house = db.prepare('SELECT property_id FROM houses WHERE id = ?').get(house_id);
             if (!house) throw new Error('House not found');
 
+            // Find current active tenant
+            const tenant = db.prepare("SELECT id FROM tenants WHERE house_id = ? AND status = 'Active' LIMIT 1").get(house_id);
+            const tenantId = tenant ? tenant.id : null;
+
             const maintenanceId = generateUUID();
             const stmt = db.prepare(`
-                INSERT INTO maintenance_requests (id, property_id, house_id, title, description, priority, issue_image_path, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'Open')
+                INSERT INTO maintenance_requests (id, property_id, house_id, tenant_id, title, description, priority, issue_image_path, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open')
             `);
-            stmt.run(maintenanceId, house.property_id, house_id, title, description, priority || 'Normal', issue_image_path);
+            stmt.run(maintenanceId, house.property_id, house_id, tenantId, title, description, priority || 'Normal', issue_image_path);
 
             logAction(maintenanceId, 'Created Request', performed_by);
             return maintenanceId;
@@ -232,11 +238,19 @@ router.post('/:id/approve', (req, res) => {
                 WHERE id = ?
             `).run(approved_by, id);
 
-            // 2. Integration: Insert into Finance expenses table
+            // 2. Integration: Insert into Finance expenses table (Business expense)
             db.prepare(`
                 INSERT INTO expenses (id, property_id, category, amount, reference_id, description, date)
                 VALUES (?, ?, 'Maintenance', ?, ?, ?, date('now'))
             `).run(generateUUID(), request.property_id, request.cost, id, `Maintenance: ${request.title}`);
+
+            // 3. Integration: Charge the Tenant for the Maintenance cost
+            if (request.tenant_id && request.cost > 0) {
+                db.prepare(`
+                    INSERT INTO transactions (id, tenant_id, type, amount, description, date)
+                    VALUES (?, ?, 'Maintenance', ?, ?, date('now'))
+                `).run(generateUUID(), request.tenant_id, request.cost, `Maintenance Charge: ${request.title}`);
+            }
 
             logAction(id, 'Approved and finalized', approved_by);
         });
