@@ -13,7 +13,14 @@ export const LicenseProvider = ({ children }) => {
     const toast = useToast();
 
     useEffect(() => {
-        checkLicense();
+        // Only check license if we have a token (user is authenticated)
+        const token = localStorage.getItem('token');
+        if (token) {
+            checkLicense();
+        } else {
+            // No token, set to TRIAL so the route can redirect to login
+            setLicense({ status: 'TRIAL', daysRemaining: 7, message: 'Not authenticated' });
+        }
     }, []);
 
     const checkLicense = async () => {
@@ -21,9 +28,10 @@ export const LicenseProvider = ({ children }) => {
             const res = await api.get('/license/status');
             setLicense(res.data);
         } catch (err) {
-            // No changes needed
             console.error('License Check Failed:', err);
-            setLicense(prev => ({ ...prev, status: 'ERROR' }));
+            // On network/auth error, fall back to TRIAL rather than ERROR
+            // This prevents a blank screen; PrivateRoute will handle auth redirect
+            setLicense({ status: 'TRIAL', daysRemaining: 0, message: 'License check unavailable' });
         }
     };
 

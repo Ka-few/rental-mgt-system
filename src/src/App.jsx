@@ -27,7 +27,16 @@ import { Navigate, Outlet } from 'react-router-dom';
 const LicenseRoute = ({ restricted }) => {
   const { license } = useLicense();
 
-  if (license.status === 'LOADING') return <div>Loading...</div>;
+  // Show a centered spinner while license is being checked
+  if (license.status === 'LOADING') {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Only redirect to activation if explicitly EXPIRED (not on ERROR/network fail)
   if (license.status === 'EXPIRED') return <Navigate to="/activation" />;
 
   // If restricted feature and in trial mode, block access
@@ -41,6 +50,7 @@ const LicenseRoute = ({ restricted }) => {
     );
   }
 
+  // ACTIVE, TRIAL (unrestricted routes), or any unknown status → allow through
   return <Outlet />;
 };
 
